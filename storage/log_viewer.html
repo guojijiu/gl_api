@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日志查看器 - Storage系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .tab {
+            padding: 15px 30px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .tab.active {
+            border-bottom-color: #667eea;
+            color: #667eea;
+        }
+
+        .tab:hover {
+            background: #f8f9fa;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .filters {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .filter-group label {
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .filter-group input,
+        .filter-group select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .logs-container {
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            transition: background 0.3s ease;
+        }
+
+        .log-entry:hover {
+            background: #f8f9fa;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .log-level {
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .log-level.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .log-level.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .log-level.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .log-timestamp {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .log-content {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #333;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            opacity: 0.9;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 日志查看器</h1>
+            <p>Storage系统 - 请求日志和SQL日志查看工具</p>
+        </div>
+
+        <div class="content">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('request')">📝 请求日志</div>
+                <div class="tab" onclick="switchTab('sql')">🗄️ SQL日志</div>
+                <div class="tab" onclick="switchTab('general')">📋 通用日志</div>
+            </div>
+
+            <!-- 请求日志 -->
+            <div id="request-tab" class="tab-content active">
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>日期</label>
+                        <input type="date" id="request-date" value="">
+                    </div>
+                    <div class="filter-group">
+                        <label>日志级别</label>
+                        <select id="request-level">
+                            <option value="">全部</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>HTTP方法</label>
+                        <select id="request-method">
+                            <option value="">全部</option>
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>状态码</label>
+                        <select id="request-status">
+                            <option value="">全部</option>
+                            <option value="200">200 (成功)</option>
+                            <option value="400">400 (客户端错误)</option>
+                            <option value="500">500 (服务器错误)</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>&nbsp;</label>
+                        <button class="btn" onclick="loadRequestLogs()">🔍 查询日志</button>
+                    </div>
+                </div>
+
+                <div id="request-stats" class="stats"></div>
+                <div id="request-logs" class="logs-container">
+                    <div class="loading">点击"查询日志"按钮开始查看请求日志</div>
+                </div>
+            </div>
+
+            <!-- SQL日志 -->
+            <div id="sql-tab" class="tab-content">
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>日期</label>
+                        <input type="date" id="sql-date" value="">
+                    </div>
+                    <div class="filter-group">
+                        <label>日志级别</label>
+                        <select id="sql-level">
+                            <option value="">全部</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>是否有错误</label>
+                        <select id="sql-error">
+                            <option value="">全部</option>
+                            <option value="true">有错误</option>
+                            <option value="false">无错误</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>&nbsp;</label>
+                        <button class="btn" onclick="loadSQLLogs()">🔍 查询SQL日志</button>
+                    </div>
+                </div>
+
+                <div id="sql-stats" class="stats"></div>
+                <div id="sql-logs" class="logs-container">
+                    <div class="loading">点击"查询SQL日志"按钮开始查看SQL日志</div>
+                </div>
+            </div>
+
+            <!-- 通用日志 -->
+            <div id="general-tab" class="tab-content">
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>日期</label>
+                        <input type="date" id="general-date" value="">
+                    </div>
+                    <div class="filter-group">
+                        <label>日志级别</label>
+                        <select id="general-level">
+                            <option value="">全部</option>
+                            <option value="INFO">INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>&nbsp;</label>
+                        <button class="btn" onclick="loadGeneralLogs()">🔍 查询通用日志</button>
+                    </div>
+                </div>
+
+                <div id="general-stats" class="stats"></div>
+                <div id="general-logs" class="logs-container">
+                    <div class="loading">点击"查询通用日志"按钮开始查看通用日志</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 设置默认日期为今天
+        document.addEventListener('DOMContentLoaded', function () {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('request-date').value = today;
+            document.getElementById('sql-date').value = today;
+            document.getElementById('general-date').value = today;
+        });
+
+        // 切换标签页
+        function switchTab(tabName) {
+            // 隐藏所有标签内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // 移除所有标签的active类
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // 显示选中的标签内容
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // 添加active类到选中的标签
+            event.target.classList.add('active');
+        }
+
+        // 加载请求日志
+        async function loadRequestLogs() {
+            const date = document.getElementById('request-date').value;
+            const level = document.getElementById('request-level').value;
+            const method = document.getElementById('request-method').value;
+            const status = document.getElementById('request-status').value;
+
+            const container = document.getElementById('request-logs');
+            container.innerHTML = '<div class="loading">正在加载请求日志...</div>';
+
+            try {
+                let url = `/api/v1/storage/request-logs?date=${date}`;
+                if (level) url += `&level=${level}`;
+                if (method) url += `&method=${method}`;
+                if (status) url += `&status_code=${status}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    displayRequestLogs(data.data);
+                    displayStats(data.data, 'request');
+                } else {
+                    container.innerHTML = `<div class="error">加载失败: ${data.message}</div>`;
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="error">加载失败: ${error.message}</div>`;
+            }
+        }
+
+        // 加载SQL日志
+        async function loadSQLLogs() {
+            const date = document.getElementById('sql-date').value;
+            const level = document.getElementById('sql-level').value;
+            const hasError = document.getElementById('sql-error').value;
+
+            const container = document.getElementById('sql-logs');
+            container.innerHTML = '<div class="loading">正在加载SQL日志...</div>';
+
+            try {
+                let url = `/api/v1/storage/sql-logs?date=${date}`;
+                if (level) url += `&level=${level}`;
+                if (hasError) url += `&has_error=${hasError}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    displaySQLLogs(data.data);
+                    displayStats(data.data, 'sql');
+                } else {
+                    container.innerHTML = `<div class="error">加载失败: ${data.message}</div>`;
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="error">加载失败: ${error.message}</div>`;
+            }
+        }
+
+        // 加载通用日志
+        async function loadGeneralLogs() {
+            const date = document.getElementById('general-date').value;
+            const level = document.getElementById('general-level').value;
+
+            const container = document.getElementById('general-logs');
+            container.innerHTML = '<div class="loading">正在加载通用日志...</div>';
+
+            try {
+                let url = `/api/v1/storage/logs?date=${date}`;
+                if (level) url += `&level=${level}`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    displayGeneralLogs(data.data);
+                    displayStats(data.data, 'general');
+                } else {
+                    container.innerHTML = `<div class="error">加载失败: ${data.message}</div>`;
+                }
+            } catch (error) {
+                container.innerHTML = `<div class="error">加载失败: ${error.message}</div>`;
+            }
+        }
+
+        // 显示请求日志
+        function displayRequestLogs(data) {
+            const container = document.getElementById('request-logs');
+
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = '<div class="loading">没有找到请求日志</div>';
+                return;
+            }
+
+            let html = '';
+            data.logs.forEach(log => {
+                try {
+                    const logData = JSON.parse(log);
+                    const level = logData.level || 'INFO';
+                    const timestamp = logData.timestamp || '未知时间';
+                    const method = logData.method || '未知方法';
+                    const path = logData.path || '未知路径';
+                    const statusCode = logData.status_code || '未知';
+                    const duration = logData.duration_ms || 0;
+                    const ip = logData.ip || '未知IP';
+
+                    html += `
+                        <div class="log-entry">
+                            <div class="log-header">
+                                <span class="log-level ${level.toLowerCase()}">${level}</span>
+                                <span class="log-timestamp">${timestamp}</span>
+                            </div>
+                            <div class="log-content">
+方法: ${method} | 路径: ${path} | 状态码: ${statusCode} | 耗时: ${duration}ms | IP: ${ip}
+                            </div>
+                        </div>
+                    `;
+                } catch (e) {
+                    html += `
+                        <div class="log-entry">
+                            <div class="log-content">${log}</div>
+                        </div>
+                    `;
+                }
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 显示SQL日志
+        function displaySQLLogs(data) {
+            const container = document.getElementById('sql-logs');
+
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = '<div class="loading">没有找到SQL日志</div>';
+                return;
+            }
+
+            let html = '';
+            data.logs.forEach(log => {
+                try {
+                    const logData = JSON.parse(log);
+                    const level = logData.level || 'INFO';
+                    const timestamp = logData.timestamp || '未知时间';
+                    const query = logData.query || '未知查询';
+                    const duration = logData.duration_ms || 0;
+                    const hasError = logData.has_error || false;
+                    const error = logData.error || '';
+
+                    html += `
+                        <div class="log-entry">
+                            <div class="log-header">
+                                <span class="log-level ${level.toLowerCase()}">${level}</span>
+                                <span class="log-timestamp">${timestamp}</span>
+                            </div>
+                            <div class="log-content">
+查询: ${query}
+耗时: ${duration}ms
+${hasError ? '错误: ' + error : '执行成功'}
+                            </div>
+                        </div>
+                    `;
+                } catch (e) {
+                    html += `
+                        <div class="log-entry">
+                            <div class="log-content">${log}</div>
+                        </div>
+                    `;
+                }
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 显示通用日志
+        function displayGeneralLogs(data) {
+            const container = document.getElementById('general-logs');
+
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = '<div class="loading">没有找到通用日志</div>';
+                return;
+            }
+
+            let html = '';
+            data.logs.forEach(log => {
+                try {
+                    const logData = JSON.parse(log);
+                    const level = logData.level || 'INFO';
+                    const timestamp = logData.timestamp || '未知时间';
+                    const message = logData.message || '未知消息';
+
+                    html += `
+                        <div class="log-entry">
+                            <div class="log-header">
+                                <span class="log-level ${level.toLowerCase()}">${level}</span>
+                                <span class="log-timestamp">${timestamp}</span>
+                            </div>
+                            <div class="log-content">${message}</div>
+                        </div>
+                    `;
+                } catch (e) {
+                    html += `
+                        <div class="log-entry">
+                            <div class="log-content">${log}</div>
+                        </div>
+                    `;
+                }
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 显示统计信息
+        function displayStats(data, type) {
+            const statsContainer = document.getElementById(type + '-stats');
+            const count = data.count || 0;
+
+            statsContainer.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${count}</div>
+                    <div class="stat-label">日志总数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${data.date || '今天'}</div>
+                    <div class="stat-label">查询日期</div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+
+</html>

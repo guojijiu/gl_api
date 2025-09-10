@@ -1,0 +1,500 @@
+# 云平台API增强版告警规则配置
+# 基于Prometheus AlertManager的告警规则
+
+groups:
+  # 系统资源告警
+  - name: system_resources
+    rules:
+      # CPU使用率告警
+      - alert: HighCPUUsage
+        expr: cpu_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+          component: cpu
+        annotations:
+          summary: "CPU使用率过高"
+          description: "CPU使用率已达到 {{ $value }}%，超过80%的阈值"
+          runbook_url: "https://docs.example.com/runbooks/high-cpu-usage"
+
+      - alert: CriticalCPUUsage
+        expr: cpu_usage_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: system
+          component: cpu
+        annotations:
+          summary: "CPU使用率严重过高"
+          description: "CPU使用率已达到 {{ $value }}%，超过95%的阈值"
+          runbook_url: "https://docs.example.com/runbooks/critical-cpu-usage"
+
+      # 内存使用率告警
+      - alert: HighMemoryUsage
+        expr: memory_usage_percent > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+          component: memory
+        annotations:
+          summary: "内存使用率过高"
+          description: "内存使用率已达到 {{ $value }}%，超过85%的阈值"
+
+      - alert: CriticalMemoryUsage
+        expr: memory_usage_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+          service: system
+          component: memory
+        annotations:
+          summary: "内存使用率严重过高"
+          description: "内存使用率已达到 {{ $value }}%，超过95%的阈值"
+
+      # 磁盘使用率告警
+      - alert: HighDiskUsage
+        expr: disk_usage_percent > 80
+        for: 10m
+        labels:
+          severity: warning
+          service: system
+          component: disk
+        annotations:
+          summary: "磁盘使用率过高"
+          description: "磁盘使用率已达到 {{ $value }}%，超过80%的阈值"
+
+      - alert: CriticalDiskUsage
+        expr: disk_usage_percent > 90
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+          component: disk
+        annotations:
+          summary: "磁盘使用率严重过高"
+          description: "磁盘使用率已达到 {{ $value }}%，超过90%的阈值"
+
+      # 磁盘空间不足告警
+      - alert: LowDiskSpace
+        expr: disk_free_bytes < 1073741824  # 1GB
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+          component: disk
+        annotations:
+          summary: "磁盘空间不足"
+          description: "磁盘剩余空间仅剩 {{ $value | humanize1024 }}B"
+
+  # 应用性能告警
+  - name: application_performance
+    rules:
+      # Go运行时告警
+      - alert: HighGoroutineCount
+        expr: goroutines > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+          component: goruntime
+        annotations:
+          summary: "Goroutine数量过高"
+          description: "当前Goroutine数量为 {{ $value }}，超过1000个"
+
+      - alert: CriticalGoroutineCount
+        expr: goroutines > 5000
+        for: 2m
+        labels:
+          severity: critical
+          service: application
+          component: goruntime
+        annotations:
+          summary: "Goroutine数量严重过高"
+          description: "当前Goroutine数量为 {{ $value }}，超过5000个"
+
+      # 内存分配告警
+      - alert: HighMemoryAllocation
+        expr: heap_alloc_bytes > 1073741824  # 1GB
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+          component: memory
+        annotations:
+          summary: "内存分配过高"
+          description: "堆内存分配已达到 {{ $value | humanize1024 }}B"
+
+      # GC频率告警
+      - alert: HighGCFrequency
+        expr: rate(gc_cycles[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: application
+          component: gc
+        annotations:
+          summary: "GC频率过高"
+          description: "GC频率为 {{ $value }} 次/秒"
+
+      # GC暂停时间告警
+      - alert: LongGCPause
+        expr: gc_pause_ns > 100000000  # 100ms
+        for: 2m
+        labels:
+          severity: warning
+          service: application
+          component: gc
+        annotations:
+          summary: "GC暂停时间过长"
+          description: "GC暂停时间为 {{ $value | humanizeDuration }}"
+
+  # 网络告警
+  - name: network
+    rules:
+      # 网络连接数告警
+      - alert: HighConnectionCount
+        expr: connections_total > 10000
+        for: 5m
+        labels:
+          severity: warning
+          service: network
+          component: connections
+        annotations:
+          summary: "网络连接数过高"
+          description: "当前网络连接数为 {{ $value }}，超过10000个"
+
+      # 网络错误告警
+      - alert: NetworkErrors
+        expr: rate(network_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: network
+          component: errors
+        annotations:
+          summary: "网络错误率过高"
+          description: "网络错误率为 {{ $value }} 次/秒"
+
+  # 数据库告警
+  - name: database
+    rules:
+      # 数据库连接错误
+      - alert: DatabaseConnectionError
+        expr: database_connection_errors_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+          component: connection
+        annotations:
+          summary: "数据库连接错误"
+          description: "检测到 {{ $value }} 个数据库连接错误"
+
+      # 数据库连接池耗尽
+      - alert: DatabaseConnectionPoolExhausted
+        expr: database_connections_active / database_connections_max > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          service: database
+          component: connection_pool
+        annotations:
+          summary: "数据库连接池即将耗尽"
+          description: "数据库连接池使用率为 {{ $value | humanizePercentage }}"
+
+      # 慢查询告警
+      - alert: SlowQueries
+        expr: rate(slow_queries_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+          component: performance
+        annotations:
+          summary: "慢查询频率过高"
+          description: "慢查询频率为 {{ $value }} 次/秒"
+
+      # 数据库锁等待
+      - alert: DatabaseLockWait
+        expr: database_lock_wait_time > 5000  # 5秒
+        for: 2m
+        labels:
+          severity: warning
+          service: database
+          component: locks
+        annotations:
+          summary: "数据库锁等待时间过长"
+          description: "数据库锁等待时间为 {{ $value | humanizeDuration }}"
+
+  # Redis告警
+  - name: redis
+    rules:
+      # Redis连接错误
+      - alert: RedisConnectionError
+        expr: redis_connection_errors_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: redis
+          component: connection
+        annotations:
+          summary: "Redis连接错误"
+          description: "检测到 {{ $value }} 个Redis连接错误"
+
+      # Redis内存使用率
+      - alert: HighRedisMemoryUsage
+        expr: redis_memory_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+          component: memory
+        annotations:
+          summary: "Redis内存使用率过高"
+          description: "Redis内存使用率为 {{ $value }}%"
+
+      # Redis键过期
+      - alert: RedisKeyExpiration
+        expr: rate(redis_keys_expired_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+          component: keys
+        annotations:
+          summary: "Redis键过期频率过高"
+          description: "Redis键过期频率为 {{ $value }} 次/秒"
+
+  # API性能告警
+  - name: api_performance
+    rules:
+      # 响应时间告警
+      - alert: HighResponseTime
+        expr: http_request_duration_seconds{quantile="0.95"} > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+          component: performance
+        annotations:
+          summary: "API响应时间过长"
+          description: "95%的请求响应时间超过 {{ $value }} 秒"
+
+      - alert: CriticalResponseTime
+        expr: http_request_duration_seconds{quantile="0.95"} > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: api
+          component: performance
+        annotations:
+          summary: "API响应时间严重过长"
+          description: "95%的请求响应时间超过 {{ $value }} 秒"
+
+      # 错误率告警
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+          component: errors
+        annotations:
+          summary: "API错误率过高"
+          description: "API错误率为 {{ $value | humanizePercentage }}"
+
+      - alert: CriticalErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          service: api
+          component: errors
+        annotations:
+          summary: "API错误率严重过高"
+          description: "API错误率为 {{ $value | humanizePercentage }}"
+
+      # 请求频率告警
+      - alert: HighRequestRate
+        expr: rate(http_requests_total[5m]) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+          component: traffic
+        annotations:
+          summary: "API请求频率过高"
+          description: "API请求频率为 {{ $value }} 次/秒"
+
+  # 安全告警
+  - name: security
+    rules:
+      # 登录失败告警
+      - alert: HighLoginFailureRate
+        expr: rate(login_attempts_total{success="false"}[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: security
+          component: authentication
+        annotations:
+          summary: "登录失败频率过高"
+          description: "登录失败频率为 {{ $value }} 次/秒"
+
+      # 可疑IP告警
+      - alert: SuspiciousIPDetected
+        expr: security_events_total{type="suspicious_ip"} > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: security
+          component: threat_detection
+        annotations:
+          summary: "检测到可疑IP"
+          description: "检测到 {{ $value }} 个可疑IP活动"
+
+      # 威胁检测告警
+      - alert: ThreatDetected
+        expr: security_events_total{type="threat_detected"} > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: security
+          component: threat_detection
+        annotations:
+          summary: "检测到安全威胁"
+          description: "检测到 {{ $value }} 个安全威胁"
+
+      # 异常行为告警
+      - alert: AnomalousBehavior
+        expr: security_events_total{type="anomalous_behavior"} > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: security
+          component: anomaly_detection
+        annotations:
+          summary: "检测到异常行为"
+          description: "检测到 {{ $value }} 个异常行为"
+
+  # 业务指标告警
+  - name: business_metrics
+    rules:
+      # 用户注册异常
+      - alert: UserRegistrationAnomaly
+        expr: rate(user_registrations_total[1h]) > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: business
+          component: user_registration
+        annotations:
+          summary: "用户注册异常"
+          description: "用户注册频率为 {{ $value }} 次/小时"
+
+      # 文章创建异常
+      - alert: PostCreationAnomaly
+        expr: rate(posts_created_total[1h]) > 50
+        for: 10m
+        labels:
+          severity: warning
+          service: business
+          component: post_creation
+        annotations:
+          summary: "文章创建异常"
+          description: "文章创建频率为 {{ $value }} 次/小时"
+
+  # 服务可用性告警
+  - name: service_availability
+    rules:
+      # 服务不可用
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: availability
+          component: service
+        annotations:
+          summary: "服务不可用"
+          description: "服务 {{ $labels.instance }} 不可用"
+
+      # 服务重启
+      - alert: ServiceRestart
+        expr: increase(process_start_time_seconds[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: availability
+          component: service
+        annotations:
+          summary: "服务重启"
+          description: "服务 {{ $labels.instance }} 已重启"
+
+      # 健康检查失败
+      - alert: HealthCheckFailed
+        expr: health_check_status != 1
+        for: 2m
+        labels:
+          severity: critical
+          service: availability
+          component: health_check
+        annotations:
+          summary: "健康检查失败"
+          description: "服务 {{ $labels.instance }} 健康检查失败"
+
+  # 资源泄漏告警
+  - name: resource_leaks
+    rules:
+      # 文件描述符泄漏
+      - alert: FileDescriptorLeak
+        expr: process_open_fds / process_max_fds > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+          component: file_descriptors
+        annotations:
+          summary: "文件描述符使用率过高"
+          description: "文件描述符使用率为 {{ $value | humanizePercentage }}"
+
+      # 内存泄漏
+      - alert: MemoryLeak
+        expr: increase(heap_alloc_bytes[1h]) > 1073741824  # 1GB
+        for: 10m
+        labels:
+          severity: warning
+          service: application
+          component: memory
+        annotations:
+          summary: "可能存在内存泄漏"
+          description: "1小时内堆内存增长 {{ $value | humanize1024 }}B"
+
+  # 外部依赖告警
+  - name: external_dependencies
+    rules:
+      # 外部API调用失败
+      - alert: ExternalAPIFailure
+        expr: rate(external_api_calls_total{status="error"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: external
+          component: api_calls
+        annotations:
+          summary: "外部API调用失败率过高"
+          description: "外部API调用失败率为 {{ $value }} 次/秒"
+
+      # 外部服务不可用
+      - alert: ExternalServiceDown
+        expr: external_service_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: external
+          component: service
+        annotations:
+          summary: "外部服务不可用"
+          description: "外部服务 {{ $labels.service }} 不可用"

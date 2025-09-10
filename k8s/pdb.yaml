@@ -1,0 +1,12 @@
+# Kubernetes PDB (Pod Disruption Budget) 配置
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cloud-platform-api-pdb
+  namespace: cloud-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cloud-platform-api
+      tier: backend

@@ -1,0 +1,262 @@
+# 测试环境配置文件
+# 用于配置测试环境的各项参数
+
+# 基础测试配置
+base:
+  mode: "all"                    # 测试模式: unit, integration, performance, all
+  timeout: 30s                   # 测试超时时间
+  parallel: true                 # 是否并行执行
+  test_data_dir: "./testdata"    # 测试数据目录
+  cleanup_test_data: true        # 是否清理测试数据
+  log_level: "info"              # 测试日志级别
+  verbose: false                 # 是否显示详细输出
+
+# 数据库测试配置
+database:
+  type: "sqlite"                 # 测试数据库类型: sqlite, mysql, postgres
+  dsn: "file:test.db?cache=shared&mode=memory"  # 测试数据库连接字符串
+  in_memory: true                # 是否使用内存数据库
+  seed_file: "./testdata/seed.sql"  # 测试数据种子文件
+  reset_on_start: true           # 是否重置数据库
+  rollback_transactions: true    # 测试事务回滚
+
+# 缓存测试配置
+cache:
+  type: "memory"                 # 测试缓存类型: memory, redis
+  cleanup_on_finish: true        # 是否清理缓存
+  redis:
+    addr: "localhost:6379"       # 测试Redis地址
+    password: ""                 # 测试Redis密码
+    db: 1                        # 测试Redis数据库
+    dial_timeout: 5s             # 连接超时
+    read_timeout: 3s             # 读取超时
+    write_timeout: 3s            # 写入超时
+
+# 性能测试配置
+performance:
+  concurrent_users: 10           # 并发用户数
+  duration: 60s                  # 测试持续时间
+  request_interval: 100ms        # 请求间隔
+  record_response_time: true     # 是否记录响应时间
+  thresholds:
+    avg_response_time: 100ms     # 平均响应时间阈值
+    p95_response_time: 200ms     # 95%响应时间阈值
+    p99_response_time: 500ms     # 99%响应时间阈值
+    error_rate: 0.01             # 错误率阈值
+    throughput: 100              # 吞吐量阈值
+
+# 覆盖率测试配置
+coverage:
+  enabled: true                  # 是否启用覆盖率测试
+  output_dir: "./coverage"       # 覆盖率输出目录
+  output_format: "html"          # 覆盖率输出格式: html, xml, text
+  threshold: 80.0                # 覆盖率阈值
+  exclude_packages:              # 排除的包
+    - "main"
+    - "vendor"
+    - "test"
+  exclude_files:                 # 排除的文件
+    - "*_test.go"
+    - "test_*.go"
+    - "mock_*.go"
+
+# 测试环境特定配置
+environment:
+  # 开发环境
+  development:
+    database:
+      type: "sqlite"
+      dsn: "file:dev_test.db?cache=shared&mode=memory"
+    cache:
+      type: "memory"
+    log_level: "debug"
+    verbose: true
+
+  # 测试环境
+  testing:
+    database:
+      type: "sqlite"
+      dsn: "file:test.db?cache=shared&mode=memory"
+    cache:
+      type: "memory"
+    log_level: "info"
+    verbose: false
+
+  # 集成测试环境
+  integration:
+    database:
+      type: "mysql"
+      dsn: "root:password@tcp(localhost:3306)/test_db?charset=utf8mb4&parseTime=True&loc=Local"
+      in_memory: false
+    cache:
+      type: "redis"
+      redis:
+        addr: "localhost:6379"
+        db: 2
+    log_level: "warn"
+    verbose: false
+
+  # 性能测试环境
+  performance:
+    database:
+      type: "mysql"
+      dsn: "root:password@tcp(localhost:3306)/perf_test_db?charset=utf8mb4&parseTime=True&loc=Local"
+      in_memory: false
+    cache:
+      type: "redis"
+      redis:
+        addr: "localhost:6379"
+        db: 3
+    performance:
+      concurrent_users: 50
+      duration: 300s
+      request_interval: 50ms
+    log_level: "error"
+    verbose: false
+
+# 测试工具配置
+tools:
+  # 代码覆盖率工具
+  coverage:
+    go_cover: true               # 使用Go内置覆盖率工具
+    gocov: false                 # 使用gocov工具
+    gocov_xml: false             # 生成XML格式报告
+    
+  # 性能分析工具
+  profiling:
+    cpu_profile: true            # CPU性能分析
+    memory_profile: true         # 内存性能分析
+    block_profile: false         # 阻塞性能分析
+    mutex_profile: false         # 互斥锁性能分析
+    
+  # 测试报告工具
+  reporting:
+    junit_xml: true              # 生成JUnit XML报告
+    html_report: true            # 生成HTML报告
+    json_report: false           # 生成JSON报告
+    
+  # 模拟工具
+  mocking:
+    gomock: true                 # 使用gomock
+    testify_mock: true           # 使用testify/mock
+    sqlmock: true                # 使用sqlmock
+
+# 测试数据配置
+test_data:
+  # 用户测试数据
+  users:
+    count: 100                   # 生成用户数量
+    roles: ["user", "admin", "moderator"]  # 用户角色
+    statuses: ["active", "inactive", "suspended"]  # 用户状态
+    
+  # 标签测试数据
+  tags:
+    count: 50                    # 生成标签数量
+    categories: ["技术", "设计", "产品", "运营", "市场"]  # 标签分类
+    
+  # API密钥测试数据
+  api_keys:
+    count: 200                   # 生成API密钥数量
+    permissions: ["read", "write", "admin", "delete"]  # 权限类型
+    
+  # 日志测试数据
+  logs:
+    count: 1000                  # 生成日志数量
+    types: ["request", "sql", "error", "audit", "security", "business", "access"]  # 日志类型
+    levels: ["debug", "info", "warn", "error", "fatal"]  # 日志级别
+
+# 测试安全配置
+security:
+  # 认证配置
+  authentication:
+    jwt_secret: "test_jwt_secret_key_for_testing_only"  # JWT密钥
+    jwt_expiry: 1h               # JWT过期时间
+    bcrypt_cost: 4               # bcrypt加密成本
+    
+  # 授权配置
+  authorization:
+    admin_role: "admin"          # 管理员角色
+    moderator_role: "moderator"  # 版主角色
+    user_role: "user"            # 普通用户角色
+    
+  # 加密配置
+  encryption:
+    aes_key: "test_aes_key_32_bytes_long_for_test"  # AES密钥
+    rsa_key_size: 2048           # RSA密钥大小
+
+# 测试网络配置
+network:
+  # HTTP配置
+  http:
+    port: 8080                   # 测试服务器端口
+    timeout: 30s                 # HTTP超时时间
+    max_body_size: "10MB"        # 最大请求体大小
+    
+  # WebSocket配置
+  websocket:
+    port: 8081                   # WebSocket端口
+    ping_interval: 30s           # Ping间隔
+    pong_wait: 60s               # Pong等待时间
+    
+  # 数据库连接配置
+  database:
+    max_open_conns: 100          # 最大连接数
+    max_idle_conns: 10           # 最大空闲连接数
+    conn_max_lifetime: 1h        # 连接最大生命周期
+
+# 测试监控配置
+monitoring:
+  # 指标收集
+  metrics:
+    enabled: true                # 启用指标收集
+    interval: 10s                # 收集间隔
+    retention: 24h               # 保留时间
+    
+  # 健康检查
+  health_check:
+    enabled: true                # 启用健康检查
+    interval: 30s                # 检查间隔
+    timeout: 5s                  # 检查超时
+    
+  # 告警配置
+  alerts:
+    enabled: true                # 启用告警
+    email: "test@example.com"    # 告警邮箱
+    webhook: "http://localhost:8080/webhook"  # 告警Webhook
+
+# 测试清理配置
+cleanup:
+  # 数据库清理
+  database:
+    enabled: true                # 启用数据库清理
+    tables:                      # 需要清理的表
+      - "users"
+      - "tags"
+      - "api_keys"
+      - "audit_logs"
+      - "websocket_rooms"
+      - "websocket_messages"
+      - "log_statistics"
+      - "performance_metrics"
+      - "system_configs"
+      - "notification_configs"
+      - "user_sessions"
+      - "user_activities"
+      - "system_events"
+      
+  # 文件清理
+  files:
+    enabled: true                # 启用文件清理
+    patterns:                    # 文件匹配模式
+      - "*.tmp"
+      - "*.log"
+      - "test_*"
+      - "temp_*"
+      
+  # 缓存清理
+  cache:
+    enabled: true                # 启用缓存清理
+    keys:                        # 需要清理的键
+      - "test:*"
+      - "temp:*"
+      - "session:*"

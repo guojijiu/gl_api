@@ -1,0 +1,92 @@
+# Kubernetes部署配置
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-platform-api
+  namespace: cloud-platform
+  labels:
+    app: cloud-platform-api
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cloud-platform-api
+  template:
+    metadata:
+      labels:
+        app: cloud-platform-api
+        version: v1
+    spec:
+      containers:
+      - name: cloud-platform-api
+        image: your-registry.com/cloud-platform-api:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: GIN_MODE
+          value: "release"
+        - name: DB_DRIVER
+          value: "mysql"
+        - name: DB_HOST
+          value: "mysql-service"
+        - name: DB_PORT
+          value: "3306"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: cloud-platform-secrets
+              key: db-username
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cloud-platform-secrets
+              key: db-password
+        - name: DB_DATABASE
+          value: "cloud_platform"
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: cloud-platform-secrets
+              key: redis-password
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: cloud-platform-secrets
+              key: jwt-secret
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: storage-volume
+          mountPath: /app/storage
+      volumes:
+      - name: storage-volume
+        persistentVolumeClaim:
+          claimName: cloud-platform-storage
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

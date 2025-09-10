@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage 文件上传测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        input[type="file"],
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+
+        .progress {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background-color: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Storage 文件上传测试</h1>
+
+        <form id="uploadForm">
+            <div class="form-group">
+                <label for="file">选择文件:</label>
+                <input type="file" id="file" name="file" required>
+            </div>
+
+            <div class="form-group">
+                <label for="path">存储路径 (可选):</label>
+                <input type="text" id="path" name="path" placeholder="例如: images/2024/01">
+            </div>
+
+            <div class="form-group">
+                <label for="type">存储类型:</label>
+                <select id="type" name="type">
+                    <option value="public">公共文件</option>
+                    <option value="private">私有文件</option>
+                </select>
+            </div>
+
+            <button type="submit">上传文件</button>
+        </form>
+
+        <div class="progress" id="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="result" id="result"></div>
+
+        <div class="info" style="margin-top: 30px; padding: 15px;">
+            <h3>测试说明:</h3>
+            <ul>
+                <li><strong>公共文件:</strong> 可以直接通过URL访问，无需认证</li>
+                <li><strong>私有文件:</strong> 需要用户认证才能访问</li>
+                <li><strong>存储路径:</strong> 如果不填写，文件将存储在默认的uploads目录</li>
+                <li>上传成功后，文件将保存在storage/app/public或storage/app/private目录中</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const formData = new FormData();
+            const fileInput = document.getElementById('file');
+            const pathInput = document.getElementById('path');
+            const typeInput = document.getElementById('type');
+
+            if (fileInput.files.length === 0) {
+                showResult('请选择要上传的文件', 'error');
+                return;
+            }
+
+            formData.append('file', fileInput.files[0]);
+            if (pathInput.value.trim()) {
+                formData.append('path', pathInput.value.trim());
+            }
+            formData.append('type', typeInput.value);
+
+            // 显示进度条
+            document.getElementById('progress').style.display = 'block';
+            document.getElementById('result').style.display = 'none';
+
+            // 模拟上传进度
+            let progress = 0;
+            const progressBar = document.getElementById('progressBar');
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 10;
+                if (progress > 90) progress = 90;
+                progressBar.style.width = progress + '%';
+            }, 100);
+
+            // 发送上传请求
+            fetch('/api/v1/storage/upload', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    clearInterval(progressInterval);
+                    progressBar.style.width = '100%';
+
+                    setTimeout(() => {
+                        document.getElementById('progress').style.display = 'none';
+
+                        if (data.success) {
+                            showResult(`
+                            <strong>上传成功!</strong><br>
+                            文件名: ${data.data.filename}<br>
+                            存储路径: ${data.data.path}<br>
+                            文件大小: ${(data.data.size / 1024).toFixed(2)} KB<br>
+                            存储类型: ${data.data.type}
+                        `, 'success');
+                        } else {
+                            showResult(`上传失败: ${data.message}`, 'error');
+                        }
+                    }, 500);
+                })
+                .catch(error => {
+                    clearInterval(progressInterval);
+                    document.getElementById('progress').style.display = 'none';
+                    showResult(`上传出错: ${error.message}`, 'error');
+                });
+        });
+
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = message;
+            resultDiv.className = `result ${type}`;
+            resultDiv.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>

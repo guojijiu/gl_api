@@ -1,0 +1,238 @@
+# AlertManager配置文件
+# 用于管理告警通知和路由
+
+global:
+  # SMTP配置
+  smtp_smarthost: 'localhost:587'
+  smtp_from: 'alerts@example.com'
+  smtp_auth_username: 'alerts@example.com'
+  smtp_auth_password: 'your_email_password'
+  smtp_require_tls: true
+
+  # 告警模板
+  templates:
+    - '/etc/alertmanager/templates/*.tmpl'
+
+# 告警路由配置
+route:
+  group_by: ['alertname', 'service', 'severity']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 1h
+  receiver: 'default-receiver'
+  routes:
+    # 关键告警直接发送
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 5s
+      repeat_interval: 30m
+    
+    # 系统资源告警
+    - match:
+        service: system
+      receiver: 'system-alerts'
+      group_interval: 5m
+      repeat_interval: 2h
+    
+    # 应用性能告警
+    - match:
+        service: application
+      receiver: 'application-alerts'
+      group_interval: 5m
+      repeat_interval: 2h
+    
+    # 安全告警
+    - match:
+        service: security
+      receiver: 'security-alerts'
+      group_wait: 0s
+      repeat_interval: 15m
+    
+    # 数据库告警
+    - match:
+        service: database
+      receiver: 'database-alerts'
+      group_interval: 5m
+      repeat_interval: 1h
+    
+    # API性能告警
+    - match:
+        service: api
+      receiver: 'api-alerts'
+      group_interval: 5m
+      repeat_interval: 1h
+
+# 告警接收器配置
+receivers:
+  # 默认接收器
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'admin@example.com'
+        subject: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          告警: {{ .Annotations.summary }}
+          描述: {{ .Annotations.description }}
+          时间: {{ .StartsAt }}
+          服务: {{ .Labels.service }}
+          严重程度: {{ .Labels.severity }}
+          {{ end }}
+
+  # 关键告警接收器
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'admin@example.com,ops@example.com'
+        subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+        body: |
+          🚨 关键告警 🚨
+          
+          {{ range .Alerts }}
+          告警: {{ .Annotations.summary }}
+          描述: {{ .Annotations.description }}
+          时间: {{ .StartsAt }}
+          服务: {{ .Labels.service }}
+          实例: {{ .Labels.instance }}
+          
+          处理手册: {{ .Annotations.runbook_url }}
+          {{ end }}
+    
+    # 同时发送到Slack
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#alerts'
+        title: 'Critical Alert'
+        text: |
+          🚨 *Critical Alert* 🚨
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          Service: {{ .Labels.service }}
+          Instance: {{ .Labels.instance }}
+          {{ end }}
+        send_resolved: true
+
+  # 系统告警接收器
+  - name: 'system-alerts'
+    email_configs:
+      - to: 'ops@example.com'
+        subject: '[SYSTEM] {{ .GroupLabels.alertname }}'
+        body: |
+          系统告警
+          
+          {{ range .Alerts }}
+          告警: {{ .Annotations.summary }}
+          描述: {{ .Annotations.description }}
+          时间: {{ .StartsAt }}
+          组件: {{ .Labels.component }}
+          {{ end }}
+
+  # 应用告警接收器
+  - name: 'application-alerts'
+    email_configs:
+      - to: 'dev@example.com'
+        subject: '[APPLICATION] {{ .GroupLabels.alertname }}'
+        body: |
+          应用性能告警
+          
+          {{ range .Alerts }}
+          告警: {{ .Annotations.summary }}
+          描述: {{ .Annotations.description }}
+          时间: {{ .StartsAt }}
+          组件: {{ .Labels.component }}
+          {{ end }}
+
+  # 安全告警接收器
+  - name: 'security-alerts'
+    email_configs:
+      - to: 'security@example.com,admin@example.com'
+        subject: '[SECURITY] {{ .GroupLabels.alertname }}'
+        body: |
+          🔒 安全告警 🔒
+          
+          {{ range .Alerts }}
+          告警: {{ .Annotations.summary }}
+          描述: {{ .Annotations.description }}
+          时间: {{ .StartsAt }}
+          组件: {{ .Labels.component }}
+          {{ end }}
+    
+    # 发送到安全团队Slack频道
+    slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SECURITY/SLACK/WEBHOOK'
+        channel: '#security'
+        title: 'Security Alert'
+        text: |
+          🔒 *Security Alert* 🔒
+          {{ range .Alerts }}
+          *{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          Component: {{ .Labels.component }}
+          {{ end }}
+
+  # 数据库告警接收器
+  - name: 'database-alerts'
+    email_configs:
+      - to: 'dba@example.com,ops@example.com'
+        subject: '[DATABASE] {{ .GroupLabels.alertname }}'
+        body: |
+          数据库告警
+          
+          {{ range .Alerts }}
+          告警: {{ .Annotations.summary }}
+          描述: {{ .Annotations.description }}
+          时间: {{ .StartsAt }}
+          组件: {{ .Labels.component }}
+          {{ end }}
+
+  # API告警接收器
+  - name: 'api-alerts'
+    email_configs:
+      - to: 'api-team@example.com'
+        subject: '[API] {{ .GroupLabels.alertname }}'
+        body: |
+          API性能告警
+          
+          {{ range .Alerts }}
+          告警: {{ .Annotations.summary }}
+          描述: {{ .Annotations.description }}
+          时间: {{ .StartsAt }}
+          组件: {{ .Labels.component }}
+          {{ end }}
+
+# 告警抑制规则
+inhibit_rules:
+  # 当服务完全不可用时，抑制其他告警
+  - source_match:
+      severity: 'critical'
+      alertname: 'ServiceDown'
+    target_match:
+      severity: 'warning'
+    equal: ['service', 'instance']
+  
+  # 当系统资源严重不足时，抑制应用性能告警
+  - source_match:
+      severity: 'critical'
+      service: 'system'
+    target_match:
+      service: 'application'
+    equal: ['instance']
+  
+  # 当数据库不可用时，抑制API性能告警
+  - source_match:
+      severity: 'critical'
+      service: 'database'
+    target_match:
+      service: 'api'
+    equal: ['instance']
+
+# 静默规则
+# 可以在运行时通过API或UI配置
+# 示例：在维护期间静默某些告警
+# silence_rules:
+#   - alertname: 'HighCPUUsage'
+#     matchers:
+#       - service: 'system'
+#     starts_at: '2024-01-01T02:00:00Z'
+#     ends_at: '2024-01-01T04:00:00Z'
+#     comment: 'Scheduled maintenance window'

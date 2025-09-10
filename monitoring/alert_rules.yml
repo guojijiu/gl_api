@@ -1,0 +1,180 @@
+groups:
+  - name: cloud-platform-api-alerts
+    rules:
+      # 应用可用性告警
+      - alert: APIDown
+        expr: up{job="cloud-platform-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "Cloud Platform API服务不可用"
+          description: "API服务已停止响应超过1分钟"
+          value: "{{ $value }}"
+
+      # 高响应时间告警
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="cloud-platform-api"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+        annotations:
+          summary: "API响应时间过高"
+          description: "95%的请求响应时间超过2秒"
+          value: "{{ $value }}s"
+
+      # 错误率告警
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="cloud-platform-api", status=~"5.."}[5m]) / rate(http_requests_total{job="cloud-platform-api"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          service: api
+        annotations:
+          summary: "API错误率过高"
+          description: "5xx错误率超过5%"
+          value: "{{ $value | humanizePercentage }}"
+
+      # 数据库连接告警
+      - alert: DatabaseConnectionHigh
+        expr: database_connections_in_use{job="cloud-platform-api"} / database_connections_max{job="cloud-platform-api"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+        annotations:
+          summary: "数据库连接使用率过高"
+          description: "数据库连接使用率超过80%"
+          value: "{{ $value | humanizePercentage }}"
+
+      # 数据库连接失败告警
+      - alert: DatabaseConnectionFailed
+        expr: database_connections_errors_total{job="cloud-platform-api"} > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+        annotations:
+          summary: "数据库连接失败"
+          description: "检测到数据库连接错误"
+          value: "{{ $value }}"
+
+      # Redis连接告警
+      - alert: RedisConnectionFailed
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "Redis服务不可用"
+          description: "Redis缓存服务连接失败"
+          value: "{{ $value }}"
+
+      # Redis内存使用告警
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes{job="redis"} / redis_memory_max_bytes{job="redis"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "Redis内存使用率过高"
+          description: "Redis内存使用率超过80%"
+          value: "{{ $value | humanizePercentage }}"
+
+      # 系统资源告警
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "CPU使用率过高"
+          description: "CPU使用率超过80%"
+          value: "{{ $value }}%"
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "内存使用率过高"
+          description: "内存使用率超过85%"
+          value: "{{ $value }}%"
+
+      - alert: HighDiskUsage
+        expr: (node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "磁盘使用率过高"
+          description: "磁盘使用率超过90%"
+          value: "{{ $value }}%"
+
+      # 文件上传告警
+      - alert: FileUploadErrors
+        expr: rate(file_upload_errors_total{job="cloud-platform-api"}[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: storage
+        annotations:
+          summary: "文件上传错误"
+          description: "检测到文件上传错误"
+          value: "{{ $value }}"
+
+      # 认证失败告警
+      - alert: AuthenticationFailures
+        expr: rate(auth_failures_total{job="cloud-platform-api"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+          service: auth
+        annotations:
+          summary: "认证失败次数过多"
+          description: "认证失败次数超过阈值"
+          value: "{{ $value }}"
+
+      # 安全事件告警
+      - alert: SecurityEvents
+        expr: rate(security_events_total{job="cloud-platform-api"}[5m]) > 5
+        for: 1m
+        labels:
+          severity: critical
+          service: security
+        annotations:
+          summary: "检测到安全事件"
+          description: "安全事件频率过高"
+          value: "{{ $value }}"
+
+      # 备份失败告警
+      - alert: BackupFailed
+        expr: backup_status{job="cloud-platform-api"} == 0
+        for: 1h
+        labels:
+          severity: critical
+          service: backup
+        annotations:
+          summary: "备份失败"
+          description: "自动备份任务失败"
+          value: "{{ $value }}"
+
+      # 日志文件过大告警
+      - alert: LogFileTooLarge
+        expr: log_file_size_bytes{job="cloud-platform-api"} > 1000000000
+        for: 5m
+        labels:
+          severity: warning
+          service: logging
+        annotations:
+          summary: "日志文件过大"
+          description: "日志文件大小超过1GB"
+          value: "{{ $value | humanize }}B"

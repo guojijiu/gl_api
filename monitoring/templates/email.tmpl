@@ -1,0 +1,298 @@
+{{ define "email.default.subject" }}
+[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}
+{{ end }}
+
+{{ define "email.default.html" }}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>告警通知</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: {{ if eq .Status "firing" }}#dc3545{{ else }}#28a745{{ end }};
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 0 0 5px 5px;
+        }
+        .alert {
+            background-color: white;
+            border-left: 4px solid {{ if eq .Status "firing" }}#dc3545{{ else }}#28a745{{ end }};
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .alert-title {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .alert-details {
+            margin: 10px 0;
+        }
+        .label {
+            display: inline-block;
+            background-color: #e9ecef;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            margin: 2px;
+        }
+        .severity-critical {
+            background-color: #dc3545;
+            color: white;
+        }
+        .severity-warning {
+            background-color: #ffc107;
+            color: black;
+        }
+        .severity-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{ if eq .Status "firing" }}🚨 告警触发 🚨{{ else }}✅ 告警恢复 ✅{{ end }}</h1>
+        <p>{{ .GroupLabels.alertname }}</p>
+    </div>
+    
+    <div class="content">
+        {{ range .Alerts }}
+        <div class="alert">
+            <div class="alert-title">{{ .Annotations.summary }}</div>
+            <div class="alert-details">
+                <p><strong>描述:</strong> {{ .Annotations.description }}</p>
+                <p><strong>时间:</strong> {{ .StartsAt.Format "2006-01-02 15:04:05" }}</p>
+                {{ if .EndsAt }}
+                <p><strong>恢复时间:</strong> {{ .EndsAt.Format "2006-01-02 15:04:05" }}</p>
+                {{ end }}
+                <p><strong>标签:</strong></p>
+                {{ range .Labels.SortedPairs }}
+                <span class="label severity-{{ .Value }}">{{ .Name }}: {{ .Value }}</span>
+                {{ end }}
+            </div>
+            {{ if .Annotations.runbook_url }}
+            <div class="alert-details">
+                <p><strong>处理手册:</strong> <a href="{{ .Annotations.runbook_url }}">查看详情</a></p>
+            </div>
+            {{ end }}
+        </div>
+        {{ end }}
+        
+        <div class="footer">
+            <p>此邮件由云平台API监控系统自动发送</p>
+            <p>时间: {{ .GroupLabels.alertname }} - {{ .Status }}</p>
+        </div>
+    </div>
+</body>
+</html>
+{{ end }}
+
+{{ define "email.critical.subject" }}
+[CRITICAL] {{ .GroupLabels.alertname }}
+{{ end }}
+
+{{ define "email.critical.html" }}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>关键告警</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #dc3545;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #fff5f5;
+            padding: 20px;
+            border-radius: 0 0 5px 5px;
+            border: 2px solid #dc3545;
+        }
+        .alert {
+            background-color: white;
+            border: 2px solid #dc3545;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .alert-title {
+            font-weight: bold;
+            font-size: 20px;
+            color: #dc3545;
+            margin-bottom: 15px;
+        }
+        .urgent {
+            background-color: #dc3545;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚨 关键告警 🚨</h1>
+        <p>{{ .GroupLabels.alertname }}</p>
+    </div>
+    
+    <div class="content">
+        <div class="urgent">
+            ⚠️ 需要立即处理 ⚠️
+        </div>
+        
+        {{ range .Alerts }}
+        <div class="alert">
+            <div class="alert-title">{{ .Annotations.summary }}</div>
+            <p><strong>描述:</strong> {{ .Annotations.description }}</p>
+            <p><strong>时间:</strong> {{ .StartsAt.Format "2006-01-02 15:04:05" }}</p>
+            <p><strong>服务:</strong> {{ .Labels.service }}</p>
+            <p><strong>实例:</strong> {{ .Labels.instance }}</p>
+            {{ if .Annotations.runbook_url }}
+            <p><strong>处理手册:</strong> <a href="{{ .Annotations.runbook_url }}">立即查看</a></p>
+            {{ end }}
+        </div>
+        {{ end }}
+        
+        <div class="footer">
+            <p>此邮件由云平台API监控系统自动发送</p>
+            <p>请立即处理此关键告警</p>
+        </div>
+    </div>
+</body>
+</html>
+{{ end }}
+
+{{ define "email.security.subject" }}
+[SECURITY] {{ .GroupLabels.alertname }}
+{{ end }}
+
+{{ define "email.security.html" }}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>安全告警</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #6f42c1;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f5ff;
+            padding: 20px;
+            border-radius: 0 0 5px 5px;
+            border: 2px solid #6f42c1;
+        }
+        .alert {
+            background-color: white;
+            border: 2px solid #6f42c1;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .alert-title {
+            font-weight: bold;
+            font-size: 20px;
+            color: #6f42c1;
+            margin-bottom: 15px;
+        }
+        .security-notice {
+            background-color: #6f42c1;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔒 安全告警 🔒</h1>
+        <p>{{ .GroupLabels.alertname }}</p>
+    </div>
+    
+    <div class="content">
+        <div class="security-notice">
+            🛡️ 安全事件需要关注 🛡️
+        </div>
+        
+        {{ range .Alerts }}
+        <div class="alert">
+            <div class="alert-title">{{ .Annotations.summary }}</div>
+            <p><strong>描述:</strong> {{ .Annotations.description }}</p>
+            <p><strong>时间:</strong> {{ .StartsAt.Format "2006-01-02 15:04:05" }}</p>
+            <p><strong>组件:</strong> {{ .Labels.component }}</p>
+            <p><strong>严重程度:</strong> {{ .Labels.severity }}</p>
+        </div>
+        {{ end }}
+        
+        <div class="footer">
+            <p>此邮件由云平台API安全监控系统自动发送</p>
+            <p>请及时处理安全事件</p>
+        </div>
+    </div>
+</body>
+</html>
+{{ end }}

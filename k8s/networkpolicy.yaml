@@ -1,0 +1,75 @@
+# Kubernetes NetworkPolicy 配置
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cloud-platform-network-policy
+  namespace: cloud-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: cloud-platform-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # 允许来自同一命名空间内其他Pod的流量
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: cloud-platform
+    - podSelector:
+        matchLabels:
+          app: cloud-platform-api
+  # 允许来自Ingress Controller的流量
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+  # 允许来自监控系统的流量
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+  egress:
+  # 允许访问数据库
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: cloud-platform
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+  # 允许访问Redis
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: cloud-platform
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # 允许访问监控系统
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090  # Prometheus
+    - protocol: TCP
+      port: 3000  # Grafana
+  # 允许DNS解析
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # 允许访问外部HTTPS服务
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
