@@ -16,52 +16,52 @@ func RegisterPerformanceMonitoringRoutes(router *gin.Engine, controller *Control
 	{
 		// 当前指标
 		perfGroup.GET("/current", controller.GetCurrentMetrics)
-		
+
 		// 历史指标
 		perfGroup.GET("/metrics", controller.GetMetricsByTimeRange)
-		
+
 		// 自定义指标
 		perfGroup.POST("/custom-metrics", controller.RecordCustomMetric)
-		
+
 		// 告警相关路由
 		alertGroup := perfGroup.Group("/alerts")
 		{
 			// 活跃告警
 			alertGroup.GET("/active", controller.GetActiveAlerts)
-			
+
 			// 告警历史
 			alertGroup.GET("/history", controller.GetAlertHistory)
-			
+
 			// 确认告警
 			alertGroup.POST("/:id/acknowledge", controller.AcknowledgeAlert)
 		}
-		
+
 		// 告警规则相关路由
 		ruleGroup := perfGroup.Group("/alert-rules")
 		{
 			// 创建告警规则
 			ruleGroup.POST("", controller.CreateAlertRule)
-			
+
 			// 更新告警规则
 			ruleGroup.PUT("/:id", controller.UpdateAlertRule)
-			
+
 			// 删除告警规则
 			ruleGroup.DELETE("/:id", controller.DeleteAlertRule)
 		}
-		
+
 		// 统计信息
 		perfGroup.GET("/stats", controller.GetMonitoringStats)
-		
+
 		// 系统健康状态
 		perfGroup.GET("/health", controller.GetSystemHealth)
 	}
-	
+
 	// 公开的健康检查端点（不需要认证）
 	router.GET("/health", controller.GetSystemHealth)
 }
 
 // RegisterPerformanceMiddleware 注册性能监控中间件
-func RegisterPerformanceMiddleware(router *gin.Engine, monitoringService *Services.PerformanceMonitoringService) {
+func RegisterPerformanceMiddleware(router *gin.Engine, monitoringService *Services.MonitoringService) {
 	// 排除的路径
 	excludePaths := []string{
 		"/health",
@@ -69,13 +69,13 @@ func RegisterPerformanceMiddleware(router *gin.Engine, monitoringService *Servic
 		"/favicon.ico",
 		"/api/v1/performance/health",
 	}
-	
+
 	// 创建性能监控中间件
 	perfMiddleware := Middleware.NewPerformanceMonitoringMiddleware(monitoringService, excludePaths)
-	
+
 	// 全局应用性能监控中间件
 	router.Use(perfMiddleware.Handler())
-	
+
 	// 应用其他性能监控中间件
 	router.Use(Middleware.BusinessMetricsMiddleware(monitoringService))
 	router.Use(Middleware.DatabaseMetricsMiddleware(monitoringService))

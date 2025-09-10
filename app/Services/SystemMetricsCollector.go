@@ -18,7 +18,7 @@ import (
 
 // SystemMetricsCollector 系统指标收集器
 type SystemMetricsCollector struct {
-	service    *PerformanceMonitoringService
+	service    *MonitoringService
 	mu         sync.RWMutex
 	cache      map[string]interface{}
 	lastUpdate time.Time
@@ -26,7 +26,7 @@ type SystemMetricsCollector struct {
 }
 
 // NewSystemMetricsCollector 创建系统指标收集器
-func NewSystemMetricsCollector(service *PerformanceMonitoringService) *SystemMetricsCollector {
+func NewSystemMetricsCollector(service *MonitoringService) *SystemMetricsCollector {
 	return &SystemMetricsCollector{
 		service:  service,
 		cache:    make(map[string]interface{}),

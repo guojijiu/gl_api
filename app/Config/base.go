@@ -66,6 +66,8 @@ type Config struct {
 	Monitoring        MonitoringConfig        `mapstructure:"monitoring"`
 	WebSocket         WebSocketConfig         `mapstructure:"websocket"`
 	QueryOptimization QueryOptimizationConfig `mapstructure:"query_optimization"`
+	Security          SecurityConfig          `mapstructure:"security"`
+	Testing           TestConfig              `mapstructure:"testing"`
 }
 
 var globalConfig *Config
@@ -82,6 +84,8 @@ func (c *Config) SetDefaults() {
 	c.Monitoring.SetDefaults()
 	c.WebSocket.SetDefaults()
 	c.QueryOptimization.SetDefaults()
+	c.Security.SetDefaults()
+	c.Testing.SetDefaults()
 }
 
 // BindEnvs 绑定所有配置的环境变量
@@ -96,6 +100,8 @@ func (c *Config) BindEnvs() {
 	c.Monitoring.BindEnvs()
 	c.WebSocket.BindEnvs()
 	c.QueryOptimization.BindEnvs()
+	c.Security.BindEnvs()
+	c.Testing.BindEnvs()
 }
 
 // LoadConfig 加载所有配置
@@ -176,58 +182,6 @@ func LoadConfig() {
 	//printEnvironmentVariables()
 }
 
-// setDefaults 设置默认配置值
-func setDefaults() {
-	// 创建临时实例来调用各个配置的SetDefaults方法
-	server := &ServerConfig{}
-	server.SetDefaults()
-
-	database := &DatabaseConfig{}
-	database.SetDefaults()
-
-	jwt := &JWTConfig{}
-	jwt.SetDefaults()
-
-	redis := &RedisConfig{}
-	redis.SetDefaults()
-
-	storage := &StorageConfig{}
-	storage.SetDefaults()
-
-	email := &EmailConfig{}
-	email.SetDefaults()
-
-	// 设置日志配置默认值
-	log := &LogConfig{}
-	log.SetDefaults()
-}
-
-// bindEnvs 绑定环境变量
-func bindEnvs() {
-	// 创建临时实例来调用各个配置的BindEnvs方法
-	server := &ServerConfig{}
-	server.BindEnvs()
-
-	database := &DatabaseConfig{}
-	database.BindEnvs()
-
-	jwt := &JWTConfig{}
-	jwt.BindEnvs()
-
-	redis := &RedisConfig{}
-	redis.BindEnvs()
-
-	storage := &StorageConfig{}
-	storage.BindEnvs()
-
-	email := &EmailConfig{}
-	email.BindEnvs()
-	// 绑定日志配置环境变量
-	log := &LogConfig{}
-	log.BindEnvs()
-
-}
-
 // GetConfig 获取全局配置
 func GetConfig() *Config {
 	return globalConfig
@@ -254,7 +208,7 @@ func ValidateConfig() error {
 		return fmt.Errorf("数据库配置验证失败: %v", err)
 	}
 
-	if err := globalConfig.JWT.Validate(); err != nil {
+	if err := globalConfig.JWT.ValidateProductionConfig(); err != nil {
 		return fmt.Errorf("JWT配置验证失败: %v", err)
 	}
 
@@ -318,66 +272,4 @@ func bindEnv(key string, value interface{}) {
 			}
 		}
 	}
-}
-
-// printEnvironmentVariables 打印所有读取的环境变量内容
-func printEnvironmentVariables() {
-	log.Println("=== 环境变量读取内容 ===")
-
-	// 打印所有viper读取的配置键值
-	allKeys := viper.AllKeys()
-	for _, key := range allKeys {
-		value := viper.Get(key)
-		// 对于敏感信息（如密码、密钥），只显示部分内容
-		if isSensitiveKey(key) {
-			if str, ok := value.(string); ok && len(str) > 8 {
-				log.Printf("  %s: %s...", key, str[:8])
-			} else {
-				log.Printf("  %s: [已设置]", key)
-			}
-		} else {
-			log.Printf("  %s: %v", key, value)
-		}
-	}
-
-	// 打印系统环境变量（可选）
-	log.Println("=== 系统环境变量 ===")
-	envVars := []string{
-		"GOPATH", "GOROOT", "PATH", "HOME", "USER", "PWD",
-		"DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME",
-		"REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD",
-		"JWT_SECRET", "SERVER_PORT", "SERVER_MODE",
-	}
-
-	for _, env := range envVars {
-		if value := viper.GetString(env); value != "" {
-			if isSensitiveKey(env) {
-				if len(value) > 8 {
-					log.Printf("  %s: %s...", env, value[:8])
-				} else {
-					log.Printf("  %s: [已设置]", env)
-				}
-			} else {
-				log.Printf("  %s: %s", env, value)
-			}
-		}
-	}
-
-	log.Println("=== 环境变量读取完成 ===")
-}
-
-// isSensitiveKey 判断是否为敏感配置键
-func isSensitiveKey(key string) bool {
-	sensitiveKeys := []string{
-		"password", "secret", "key", "token", "auth",
-		"jwt", "api_key", "private", "credential",
-	}
-
-	keyLower := strings.ToLower(key)
-	for _, sensitive := range sensitiveKeys {
-		if strings.Contains(keyLower, sensitive) {
-			return true
-		}
-	}
-	return false
 }

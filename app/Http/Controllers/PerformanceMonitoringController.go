@@ -13,7 +13,7 @@ import (
 // PerformanceMonitoringController 性能监控控制器
 type PerformanceMonitoringController struct {
 	Controller
-	monitoringService *Services.PerformanceMonitoringService
+	monitoringService *Services.MonitoringService
 }
 
 // NewPerformanceMonitoringController 创建性能监控控制器
@@ -22,7 +22,7 @@ func NewPerformanceMonitoringController() *PerformanceMonitoringController {
 }
 
 // SetPerformanceMonitoringService 设置性能监控服务
-func (c *PerformanceMonitoringController) SetPerformanceMonitoringService(service *Services.PerformanceMonitoringService) {
+func (c *PerformanceMonitoringController) SetPerformanceMonitoringService(service *Services.MonitoringService) {
 	c.monitoringService = service
 }
 
@@ -41,8 +41,12 @@ func (c *PerformanceMonitoringController) GetCurrentMetrics(ctx *gin.Context) {
 		return
 	}
 
-	metrics := c.monitoringService.GetCurrentMetrics()
-	
+	metrics, err := c.monitoringService.GetCurrentMetrics()
+	if err != nil {
+		c.Error(ctx, http.StatusInternalServerError, "获取指标失败: "+err.Error())
+		return
+	}
+
 	c.Success(ctx, gin.H{
 		"metrics":   metrics,
 		"timestamp": time.Now(),
@@ -96,7 +100,7 @@ func (c *PerformanceMonitoringController) GetMetricsByTimeRange(ctx *gin.Context
 	}
 
 	// 获取指标数据
-	metrics, err := c.monitoringService.GetMetricsByTimeRange(metricType, start, end)
+	metrics, err := c.monitoringService.GetMetricsByTimeRange(start, end, metricType)
 	if err != nil {
 		c.Error(ctx, http.StatusInternalServerError, "获取指标数据失败: "+err.Error())
 		return
@@ -126,8 +130,12 @@ func (c *PerformanceMonitoringController) GetActiveAlerts(ctx *gin.Context) {
 		return
 	}
 
-	alerts := c.monitoringService.GetActiveAlerts()
-	
+	alerts, err := c.monitoringService.GetActiveAlerts()
+	if err != nil {
+		c.Error(ctx, http.StatusInternalServerError, "获取活跃告警失败: "+err.Error())
+		return
+	}
+
 	c.Success(ctx, gin.H{
 		"alerts": alerts,
 		"count":  len(alerts),
@@ -184,7 +192,7 @@ func (c *PerformanceMonitoringController) GetAlertHistory(ctx *gin.Context) {
 	}
 
 	// 获取告警历史
-	alerts, err := c.monitoringService.GetAlertHistory(start, end)
+	alerts, err := c.monitoringService.GetAlertHistory(limit)
 	if err != nil {
 		c.Error(ctx, http.StatusInternalServerError, "获取告警历史失败: "+err.Error())
 		return
@@ -234,15 +242,15 @@ func (c *PerformanceMonitoringController) CreateAlertRule(ctx *gin.Context) {
 
 	// 创建告警规则
 	rule := &Models.AlertRule{
-		Name:         req.Name,
-		MetricName:   req.MetricName,
-		Condition:    req.Condition,
-		Threshold:    req.Threshold,
-		Duration:     req.Duration,
-		Severity:     req.Severity,
-		Enabled:      req.Enabled,
-		Description:  req.Description,
-		CreatedBy:    1, // TODO: 从上下文获取用户ID
+		Name:        req.Name,
+		MetricName:  req.MetricName,
+		Condition:   req.Condition,
+		Threshold:   req.Threshold,
+		Duration:    req.Duration,
+		Severity:    req.Severity,
+		Enabled:     req.Enabled,
+		Description: req.Description,
+		CreatedBy:   1, // TODO: 从上下文获取用户ID
 	}
 
 	if err := c.monitoringService.CreateAlertRule(rule); err != nil {
@@ -251,7 +259,7 @@ func (c *PerformanceMonitoringController) CreateAlertRule(ctx *gin.Context) {
 	}
 
 	c.Success(ctx, gin.H{
-		"rule": rule,
+		"rule":    rule,
 		"message": "告警规则创建成功",
 	}, "告警规则创建成功")
 }
@@ -326,7 +334,7 @@ func (c *PerformanceMonitoringController) UpdateAlertRule(ctx *gin.Context) {
 	}
 
 	c.Success(ctx, gin.H{
-		"rule": rule,
+		"rule":    rule,
 		"message": "告警规则更新成功",
 	}, "告警规则更新成功")
 }
@@ -412,8 +420,8 @@ func (c *PerformanceMonitoringController) AcknowledgeAlert(ctx *gin.Context) {
 	}
 
 	c.Success(ctx, gin.H{
-		"message": "告警确认成功",
-		"alert_id": uint(id),
+		"message":         "告警确认成功",
+		"alert_id":        uint(id),
 		"acknowledged_by": acknowledgedBy,
 	}, "告警确认成功")
 }
@@ -433,10 +441,14 @@ func (c *PerformanceMonitoringController) GetMonitoringStats(ctx *gin.Context) {
 		return
 	}
 
-	stats := c.monitoringService.GetMonitoringStats()
-	
+	stats, err := c.monitoringService.GetMonitoringStats()
+	if err != nil {
+		c.Error(ctx, http.StatusInternalServerError, "获取监控统计失败: "+err.Error())
+		return
+	}
+
 	c.Success(ctx, gin.H{
-		"stats": stats,
+		"stats":         stats,
 		"health_status": c.calculateHealthStatus(stats),
 	}, "获取监控统计信息成功")
 }
@@ -477,7 +489,7 @@ func (c *PerformanceMonitoringController) RecordCustomMetric(ctx *gin.Context) {
 
 	c.Success(ctx, gin.H{
 		"message": "自定义指标记录成功",
-		"metric": req,
+		"metric":  req,
 	}, "自定义指标记录成功")
 }
 
@@ -497,13 +509,25 @@ func (c *PerformanceMonitoringController) GetSystemHealth(ctx *gin.Context) {
 	}
 
 	// 获取当前指标
-	metrics := c.monitoringService.GetCurrentMetrics()
-	
+	metrics, err := c.monitoringService.GetCurrentMetrics()
+	if err != nil {
+		c.Error(ctx, http.StatusInternalServerError, "获取当前指标失败: "+err.Error())
+		return
+	}
+
 	// 获取活跃告警
-	activeAlerts := c.monitoringService.GetActiveAlerts()
-	
+	activeAlerts, err := c.monitoringService.GetActiveAlerts()
+	if err != nil {
+		c.Error(ctx, http.StatusInternalServerError, "获取活跃告警失败: "+err.Error())
+		return
+	}
+
 	// 获取监控统计
-	stats := c.monitoringService.GetMonitoringStats()
+	stats, err := c.monitoringService.GetMonitoringStats()
+	if err != nil {
+		c.Error(ctx, http.StatusInternalServerError, "获取监控统计失败: "+err.Error())
+		return
+	}
 
 	// 计算健康状态
 	healthStatus := c.calculateSystemHealth(metrics, activeAlerts, stats)
@@ -548,7 +572,7 @@ func (c *PerformanceMonitoringController) getMetricsCount(metrics interface{}) i
 // filterAlerts 过滤告警
 func (c *PerformanceMonitoringController) filterAlerts(alerts []Models.Alert, severity string, limit int) []Models.Alert {
 	var filtered []Models.Alert
-	
+
 	for _, alert := range alerts {
 		if severity != "" && alert.Severity != severity {
 			continue
@@ -558,7 +582,7 @@ func (c *PerformanceMonitoringController) filterAlerts(alerts []Models.Alert, se
 			break
 		}
 	}
-	
+
 	return filtered
 }
 
@@ -568,12 +592,12 @@ func (c *PerformanceMonitoringController) validateAlertRuleRequest(req *CreateAl
 	if !validConditions[req.Condition] {
 		return gin.Error{Err: gin.Error{Err: gin.Error{Err: gin.Error{Err: nil}}}}
 	}
-	
+
 	validSeverities := map[string]bool{"critical": true, "warning": true, "info": true}
 	if !validSeverities[req.Severity] {
 		return gin.Error{Err: gin.Error{Err: gin.Error{Err: gin.Error{Err: nil}}}}
 	}
-	
+
 	return nil
 }
 
@@ -582,10 +606,10 @@ func (c *PerformanceMonitoringController) calculateHealthStatus(stats *Services.
 	if stats == nil {
 		return "unknown"
 	}
-	
+
 	// 计算成功率
 	successRate := float64(stats.SuccessfulCollections) / float64(stats.TotalCollections)
-	
+
 	// 根据成功率和活跃告警数量判断健康状态
 	if successRate >= 0.95 && stats.ActiveAlertCount == 0 {
 		return "healthy"
@@ -612,7 +636,7 @@ func (c *PerformanceMonitoringController) calculateSystemHealth(metrics map[stri
 			"business_score":    100.0,
 		},
 	}
-	
+
 	// 检查活跃告警
 	criticalAlerts := 0
 	warningAlerts := 0
@@ -623,7 +647,7 @@ func (c *PerformanceMonitoringController) calculateSystemHealth(metrics map[stri
 			warningAlerts++
 		}
 	}
-	
+
 	// 根据告警数量调整健康状态
 	overallStatus := "healthy"
 	if criticalAlerts > 0 {
@@ -631,13 +655,13 @@ func (c *PerformanceMonitoringController) calculateSystemHealth(metrics map[stri
 	} else if warningAlerts > 3 {
 		overallStatus = "warning"
 	}
-	
+
 	health["overall_status"] = overallStatus
 	health["alert_summary"] = map[string]int{
 		"critical": criticalAlerts,
 		"warning":  warningAlerts,
 		"total":    len(activeAlerts),
 	}
-	
+
 	return health
 }

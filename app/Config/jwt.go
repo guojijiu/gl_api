@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -19,11 +20,12 @@ type JWTConfig struct {
 
 // SetDefaults 设置JWT配置默认值
 // 功能说明：
-// 1. 设置JWT密钥的默认值
+// 1. 不设置JWT密钥默认值，强制用户配置
 // 2. 设置token过期时间的默认值（24小时）
 // 3. 确保JWT配置有合理的默认值
 func (j *JWTConfig) SetDefaults() {
-	viper.SetDefault("jwt.secret", "your-super-secret-jwt-key-change-in-production-must-be-at-least-32-characters-long")
+	// 不设置JWT密钥默认值，强制用户通过环境变量配置
+	// 这样可以避免使用不安全的默认密钥
 	viper.SetDefault("jwt.expire_time", 24)
 }
 
@@ -70,11 +72,12 @@ func (j *JWTConfig) GetExpireTime() int64 {
 // Validate 验证JWT配置
 func (j *JWTConfig) Validate() error {
 	if j.Secret == "" {
-		return fmt.Errorf("JWT密钥未配置")
+		return fmt.Errorf("JWT密钥未配置，请设置JWT_SECRET环境变量")
 	}
 
-	if j.Secret == "your-secret-key" {
-		return fmt.Errorf("JWT密钥未正确配置，请修改默认密钥")
+	// 检查是否为不安全的默认密钥
+	if j.isDefaultSecret() {
+		return fmt.Errorf("JWT密钥使用了不安全的默认值，请设置一个强密钥")
 	}
 
 	// 检查密钥长度
@@ -212,13 +215,37 @@ func (j *JWTConfig) isSequential(secret string) bool {
 
 // IsSecretDefault 检查是否为默认密钥
 func (j *JWTConfig) IsSecretDefault() bool {
-	return j.Secret == "your-secret-key"
+	return j.isDefaultSecret()
+}
+
+// isDefaultSecret 检查是否为不安全的默认密钥
+func (j *JWTConfig) isDefaultSecret() bool {
+	defaultSecrets := []string{
+		"your-secret-key",
+		"your-super-secret-jwt-key-change-in-production",
+		"your-super-secret-jwt-key-change-in-production-must-be-at-least-32-characters-long",
+		"change-in-production",
+		"jwt-secret-key",
+		"default-jwt-secret",
+		"secret-key",
+		"jwt-secret",
+		"api-secret",
+		"app-secret",
+	}
+
+	for _, defaultSecret := range defaultSecrets {
+		if j.Secret == defaultSecret {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GenerateSecureSecret 生成安全的JWT密钥
 func (j *JWTConfig) GenerateSecureSecret() (string, error) {
-	// 生成32字节的随机密钥
-	bytes := make([]byte, 32)
+	// 生成64字节的随机密钥（更安全）
+	bytes := make([]byte, 64)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("生成随机密钥失败: %v", err)
 	}
@@ -227,10 +254,35 @@ func (j *JWTConfig) GenerateSecureSecret() (string, error) {
 	secret := hex.EncodeToString(bytes)
 
 	// 添加一些特殊字符增加复杂度
-	specialChars := "!@#$%^&*"
+	specialChars := "!@#$%^&*()_+-=[]{}|;:,.<>?"
 	secret = secret + string(specialChars[bytes[0]%uint8(len(specialChars))])
 
 	return secret, nil
+}
+
+// ValidateProductionConfig 验证生产环境配置
+func (j *JWTConfig) ValidateProductionConfig() error {
+	// 检查环境变量
+	env := strings.ToLower(os.Getenv("ENVIRONMENT"))
+	if env == "production" || env == "prod" {
+		// 生产环境额外验证
+		if j.isDefaultSecret() {
+			return fmt.Errorf("生产环境不能使用默认JWT密钥，请设置强密钥")
+		}
+
+		// 生产环境要求更高的密钥强度
+		if len(j.Secret) < 64 {
+			return fmt.Errorf("生产环境JWT密钥长度不足，建议至少64个字符，当前长度: %d", len(j.Secret))
+		}
+
+		// 检查密钥强度评分
+		strength := j.GetSecretStrength()
+		if strength < 80 {
+			return fmt.Errorf("生产环境JWT密钥强度不足，当前强度: %d/100，建议至少80分", strength)
+		}
+	}
+
+	return j.Validate()
 }
 
 // GetSecretStrength 获取密钥强度评分

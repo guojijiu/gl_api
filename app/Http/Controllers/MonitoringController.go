@@ -1,6 +1,7 @@
 package Controllers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -165,13 +166,13 @@ func (c *MonitoringController) GetAlerts(ctx *gin.Context) {
 	}
 
 	c.Success(ctx, gin.H{
-		"alerts":     alerts,
-		"total":      total,
-		"page":       page,
-		"page_size":  pageSize,
+		"alerts":      alerts,
+		"total":       total,
+		"page":        page,
+		"page_size":   pageSize,
 		"total_pages": (total + pageSize - 1) / pageSize,
-		"status":     status,
-		"severity":   severity,
+		"status":      status,
+		"severity":    severity,
 	}, "获取告警记录成功")
 }
 
@@ -210,15 +211,15 @@ func (c *MonitoringController) AcknowledgeAlert(ctx *gin.Context) {
 	userID := currentUserID.(uint)
 
 	// 确认告警
-	err = c.monitoringService.AcknowledgeAlert(uint(alertID), userID)
+	err = c.monitoringService.AcknowledgeAlert(uint(alertID), fmt.Sprintf("%d", userID))
 	if err != nil {
 		c.Error(ctx, http.StatusInternalServerError, "确认告警失败: "+err.Error())
 		return
 	}
 
 	c.Success(ctx, gin.H{
-		"message": "告警确认成功",
-		"alert_id": alertID,
+		"message":         "告警确认成功",
+		"alert_id":        alertID,
 		"acknowledged_by": userID,
 		"acknowledged_at": time.Now(),
 	}, "告警确认成功")
@@ -266,8 +267,8 @@ func (c *MonitoringController) ResolveAlert(ctx *gin.Context) {
 	}
 
 	c.Success(ctx, gin.H{
-		"message": "告警解决成功",
-		"alert_id": alertID,
+		"message":     "告警解决成功",
+		"alert_id":    alertID,
 		"resolved_by": userID,
 		"resolved_at": time.Now(),
 	}, "告警解决成功")
@@ -296,13 +297,13 @@ func (c *MonitoringController) GetAlertRules(ctx *gin.Context) {
 
 	// 构建查询条件
 	query := c.monitoringService.GetDB().Model(&Models.AlertRule{})
-	
+
 	if enabledStr != "" {
 		if enabled, err := strconv.ParseBool(enabledStr); err == nil {
 			query = query.Where("enabled = ?", enabled)
 		}
 	}
-	
+
 	if ruleType != "" {
 		query = query.Where("type = ?", ruleType)
 	}
@@ -356,24 +357,24 @@ func (c *MonitoringController) CreateAlertRule(ctx *gin.Context) {
 
 	// 创建告警规则
 	rule := &Models.AlertRule{
-		Name:        req.Name,
-		Description: req.Description,
-		Type:        req.Type,
-		MetricType:  req.MetricType,
-		MetricName:  req.MetricName,
-		Condition:   req.Condition,
-		Threshold:   req.Threshold,
-		Duration:    req.Duration,
-		Severity:    req.Severity,
-		Enabled:     req.Enabled,
-		Suppression: req.Suppression,
-		SuppressionWindow: req.SuppressionWindow,
-		Escalation:  req.Escalation,
-		EscalationDelay: req.EscalationDelay,
-		MaxEscalationLevel: req.MaxEscalationLevel,
+		Name:                 req.Name,
+		Description:          req.Description,
+		Type:                 req.Type,
+		MetricType:           req.MetricType,
+		MetricName:           req.MetricName,
+		Condition:            req.Condition,
+		Threshold:            req.Threshold,
+		Duration:             req.Duration,
+		Severity:             req.Severity,
+		Enabled:              req.Enabled,
+		Suppression:          req.Suppression,
+		SuppressionWindow:    req.SuppressionWindow,
+		Escalation:           req.Escalation,
+		EscalationDelay:      req.EscalationDelay,
+		MaxEscalationLevel:   req.MaxEscalationLevel,
 		NotificationChannels: req.NotificationChannels,
-		Tags:        req.Tags,
-		CreatedBy:   userID,
+		Tags:                 req.Tags,
+		CreatedBy:            userID,
 	}
 
 	if err := c.monitoringService.CreateAlertRule(rule); err != nil {
@@ -575,11 +576,11 @@ func (c *MonitoringController) GetNotificationRecords(ctx *gin.Context) {
 
 	// 构建查询条件
 	query := c.monitoringService.GetDB().Model(&Models.NotificationRecord{})
-	
+
 	if channel != "" {
 		query = query.Where("channel = ?", channel)
 	}
-	
+
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
@@ -639,15 +640,15 @@ func (c *MonitoringController) GetMonitoringStats(ctx *gin.Context) {
 		Count(&recentAlerts)
 
 	stats := gin.H{
-		"total_metrics":      totalMetrics,
-		"total_alerts":       totalAlerts,
-		"total_rules":        totalRules,
+		"total_metrics":       totalMetrics,
+		"total_alerts":        totalAlerts,
+		"total_rules":         totalRules,
 		"total_notifications": totalNotifications,
-		"active_alerts":      activeAlerts,
-		"critical_alerts":    criticalAlerts,
-		"recent_metrics_24h": recentMetrics,
-		"recent_alerts_24h":  recentAlerts,
-		"timestamp":          time.Now(),
+		"active_alerts":       activeAlerts,
+		"critical_alerts":     criticalAlerts,
+		"recent_metrics_24h":  recentMetrics,
+		"recent_alerts_24h":   recentAlerts,
+		"timestamp":           time.Now(),
 	}
 
 	c.Success(ctx, gin.H{

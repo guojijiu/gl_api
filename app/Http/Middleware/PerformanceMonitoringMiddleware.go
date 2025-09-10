@@ -12,17 +12,17 @@ import (
 
 // PerformanceMonitoringMiddleware 性能监控中间件
 type PerformanceMonitoringMiddleware struct {
-	monitoringService *Services.PerformanceMonitoringService
+	monitoringService *Services.MonitoringService
 	excludePaths      map[string]bool
 }
 
 // NewPerformanceMonitoringMiddleware 创建性能监控中间件
-func NewPerformanceMonitoringMiddleware(service *Services.PerformanceMonitoringService, excludePaths []string) *PerformanceMonitoringMiddleware {
+func NewPerformanceMonitoringMiddleware(service *Services.MonitoringService, excludePaths []string) *PerformanceMonitoringMiddleware {
 	excludeMap := make(map[string]bool)
 	for _, path := range excludePaths {
 		excludeMap[path] = true
 	}
-	
+
 	return &PerformanceMonitoringMiddleware{
 		monitoringService: service,
 		excludePaths:      excludeMap,
@@ -40,22 +40,22 @@ func (m *PerformanceMonitoringMiddleware) Handler() gin.HandlerFunc {
 
 		// 记录开始时间
 		startTime := time.Now()
-		
+
 		// 设置监控上下文
 		c.Set("monitor_start_time", startTime)
 		c.Set("monitor_path", c.Request.URL.Path)
 		c.Set("monitor_method", c.Request.Method)
-		
+
 		// 记录请求开始
 		m.recordRequestStart(c)
-		
+
 		// 处理请求
 		c.Next()
-		
+
 		// 记录请求结束
 		endTime := time.Now()
 		duration := endTime.Sub(startTime)
-		
+
 		// 记录性能指标
 		m.recordRequestMetrics(c, duration)
 	}
@@ -67,14 +67,14 @@ func (m *PerformanceMonitoringMiddleware) shouldExcludePath(path string) bool {
 	if m.excludePaths[path] {
 		return true
 	}
-	
+
 	// 前缀匹配
 	for excludePath := range m.excludePaths {
 		if strings.HasPrefix(path, excludePath) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -82,12 +82,12 @@ func (m *PerformanceMonitoringMiddleware) shouldExcludePath(path string) bool {
 func (m *PerformanceMonitoringMiddleware) recordRequestStart(c *gin.Context) {
 	// 增加活跃连接数
 	labels := map[string]string{
-		"method":    c.Request.Method,
-		"path":      c.Request.URL.Path,
+		"method":     c.Request.Method,
+		"path":       c.Request.URL.Path,
 		"user_agent": c.Request.UserAgent(),
-		"remote_ip": c.ClientIP(),
+		"remote_ip":  c.ClientIP(),
 	}
-	
+
 	// 记录请求开始指标
 	if m.monitoringService != nil {
 		m.monitoringService.RecordCustomMetric(
@@ -107,7 +107,7 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 
 	statusCode := c.Writer.Status()
 	isError := statusCode >= 400
-	
+
 	// 基础标签
 	labels := map[string]string{
 		"method":      c.Request.Method,
@@ -116,16 +116,16 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		"user_agent":  c.Request.UserAgent(),
 		"remote_ip":   c.ClientIP(),
 	}
-	
+
 	// 添加用户信息（如果有）
 	if userID, exists := c.Get("user_id"); exists {
 		labels["user_id"] = getUserIDString(userID)
 	}
-	
+
 	if username, exists := c.Get("username"); exists {
 		labels["username"] = fmt.Sprintf("%v", username)
 	}
-	
+
 	// 记录响应时间
 	m.monitoringService.RecordCustomMetric(
 		"http",
@@ -133,7 +133,7 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		float64(duration.Milliseconds()),
 		labels,
 	)
-	
+
 	// 记录请求总数
 	m.monitoringService.RecordCustomMetric(
 		"http",
@@ -141,7 +141,7 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		1.0,
 		labels,
 	)
-	
+
 	// 记录错误请求
 	if isError {
 		m.monitoringService.RecordCustomMetric(
@@ -151,7 +151,7 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 			labels,
 		)
 	}
-	
+
 	// 记录请求大小
 	if contentLength := c.Request.ContentLength; contentLength > 0 {
 		m.monitoringService.RecordCustomMetric(
@@ -161,7 +161,7 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 			labels,
 		)
 	}
-	
+
 	// 记录响应大小
 	responseSize := c.Writer.Size()
 	if responseSize > 0 {
@@ -172,7 +172,7 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 			labels,
 		)
 	}
-	
+
 	// 记录慢请求
 	if duration > 1*time.Second {
 		slowLabels := make(map[string]string)
@@ -180,7 +180,7 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 			slowLabels[k] = v
 		}
 		slowLabels["duration_ms"] = strconv.FormatInt(duration.Milliseconds(), 10)
-		
+
 		m.monitoringService.RecordCustomMetric(
 			"http",
 			"slow_requests",
@@ -188,10 +188,10 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 			slowLabels,
 		)
 	}
-	
+
 	// 记录特定状态码
 	m.recordStatusCodeMetrics(statusCode, labels)
-	
+
 	// 记录路径特定指标
 	m.recordPathSpecificMetrics(c.Request.URL.Path, duration, labels)
 }
@@ -202,7 +202,7 @@ func (m *PerformanceMonitoringMiddleware) recordStatusCodeMetrics(statusCode int
 	for k, v := range labels {
 		statusLabels[k] = v
 	}
-	
+
 	switch {
 	case statusCode >= 200 && statusCode < 300:
 		m.monitoringService.RecordCustomMetric("http", "requests_2xx", 1.0, statusLabels)
@@ -227,19 +227,19 @@ func (m *PerformanceMonitoringMiddleware) recordPathSpecificMetrics(path string,
 	for k, v := range labels {
 		pathLabels[k] = v
 	}
-	
+
 	// 为API路径记录特殊指标
 	if strings.HasPrefix(path, "/api/") {
 		pathLabels["api_version"] = extractAPIVersion(path)
 		pathLabels["endpoint_type"] = categorizeEndpoint(path)
-		
+
 		m.monitoringService.RecordCustomMetric(
 			"api",
 			"endpoint_calls",
 			1.0,
 			pathLabels,
 		)
-		
+
 		m.monitoringService.RecordCustomMetric(
 			"api",
 			"endpoint_response_time",
@@ -247,11 +247,11 @@ func (m *PerformanceMonitoringMiddleware) recordPathSpecificMetrics(path string,
 			pathLabels,
 		)
 	}
-	
+
 	// 为认证相关路径记录指标
 	if isAuthPath(path) {
 		pathLabels["auth_type"] = categorizeAuthPath(path)
-		
+
 		m.monitoringService.RecordCustomMetric(
 			"auth",
 			"auth_attempts",
@@ -259,11 +259,11 @@ func (m *PerformanceMonitoringMiddleware) recordPathSpecificMetrics(path string,
 			pathLabels,
 		)
 	}
-	
+
 	// 为文件上传/下载路径记录指标
 	if isFilePath(path) {
 		pathLabels["file_operation"] = categorizeFileOperation(path)
-		
+
 		m.monitoringService.RecordCustomMetric(
 			"file",
 			"file_operations",
@@ -274,7 +274,7 @@ func (m *PerformanceMonitoringMiddleware) recordPathSpecificMetrics(path string,
 }
 
 // WebSocketMetricsMiddleware WebSocket性能监控中间件
-func WebSocketMetricsMiddleware(monitoringService *Services.PerformanceMonitoringService) gin.HandlerFunc {
+func WebSocketMetricsMiddleware(monitoringService *Services.MonitoringService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if monitoringService == nil {
 			c.Next()
@@ -282,23 +282,23 @@ func WebSocketMetricsMiddleware(monitoringService *Services.PerformanceMonitorin
 		}
 
 		startTime := time.Now()
-		
+
 		// 记录WebSocket连接尝试
 		labels := map[string]string{
 			"connection_type": "websocket",
 			"remote_ip":       c.ClientIP(),
 			"user_agent":      c.Request.UserAgent(),
 		}
-		
+
 		monitoringService.RecordCustomMetric(
 			"websocket",
 			"connection_attempts",
 			1.0,
 			labels,
 		)
-		
+
 		c.Next()
-		
+
 		// 记录连接处理时间
 		duration := time.Since(startTime)
 		monitoringService.RecordCustomMetric(
@@ -311,7 +311,7 @@ func WebSocketMetricsMiddleware(monitoringService *Services.PerformanceMonitorin
 }
 
 // DatabaseMetricsMiddleware 数据库性能监控中间件
-func DatabaseMetricsMiddleware(monitoringService *Services.PerformanceMonitoringService) gin.HandlerFunc {
+func DatabaseMetricsMiddleware(monitoringService *Services.MonitoringService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if monitoringService == nil {
 			c.Next()
@@ -321,13 +321,13 @@ func DatabaseMetricsMiddleware(monitoringService *Services.PerformanceMonitoring
 		// 设置数据库监控上下文
 		c.Set("db_monitor_service", monitoringService)
 		c.Set("db_query_start_time", time.Now())
-		
+
 		c.Next()
 	}
 }
 
 // CacheMetricsMiddleware 缓存性能监控中间件
-func CacheMetricsMiddleware(monitoringService *Services.PerformanceMonitoringService) gin.HandlerFunc {
+func CacheMetricsMiddleware(monitoringService *Services.MonitoringService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if monitoringService == nil {
 			c.Next()
@@ -336,13 +336,13 @@ func CacheMetricsMiddleware(monitoringService *Services.PerformanceMonitoringSer
 
 		// 设置缓存监控上下文
 		c.Set("cache_monitor_service", monitoringService)
-		
+
 		c.Next()
 	}
 }
 
 // BusinessMetricsMiddleware 业务指标监控中间件
-func BusinessMetricsMiddleware(monitoringService *Services.PerformanceMonitoringService) gin.HandlerFunc {
+func BusinessMetricsMiddleware(monitoringService *Services.MonitoringService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if monitoringService == nil {
 			c.Next()
@@ -357,7 +357,7 @@ func BusinessMetricsMiddleware(monitoringService *Services.PerformanceMonitoring
 				"method":     c.Request.Method,
 				"user_agent": c.Request.UserAgent(),
 			}
-			
+
 			monitoringService.RecordCustomMetric(
 				"business",
 				"user_activity",
@@ -365,16 +365,16 @@ func BusinessMetricsMiddleware(monitoringService *Services.PerformanceMonitoring
 				labels,
 			)
 		}
-		
+
 		c.Next()
-		
+
 		// 记录业务操作完成
 		if c.Writer.Status() < 400 {
 			labels := map[string]string{
 				"operation": categorizeBusinessOperation(c.Request.URL.Path),
 				"status":    "success",
 			}
-			
+
 			monitoringService.RecordCustomMetric(
 				"business",
 				"operations_completed",

@@ -11,51 +11,55 @@ import (
 type MonitoringConfig struct {
 	// 基础配置
 	BaseConfig struct {
-		Enabled           bool          `mapstructure:"enabled" json:"enabled"`
-		CheckInterval     time.Duration `mapstructure:"check_interval" json:"check_interval"`
-		RetentionPeriod   time.Duration `mapstructure:"retention_period" json:"retention_period"`
-		MaxAlertsPerHour  int           `mapstructure:"max_alerts_per_hour" json:"max_alerts_per_hour"`
-		AlertCooldown     time.Duration `mapstructure:"alert_cooldown" json:"alert_cooldown"`
-		EnableDashboard   bool          `mapstructure:"enable_dashboard" json:"enable_dashboard"`
-		DashboardPort     int           `mapstructure:"dashboard_port" json:"dashboard_port"`
-		EnableMetrics     bool          `mapstructure:"enable_metrics" json:"enable_metrics"`
-		MetricsPort       int           `mapstructure:"metrics_port" json:"metrics_port"`
+		Enabled          bool          `mapstructure:"enabled" json:"enabled"`
+		CheckInterval    time.Duration `mapstructure:"check_interval" json:"check_interval"`
+		RetentionPeriod  time.Duration `mapstructure:"retention_period" json:"retention_period"`
+		MaxAlertsPerHour int           `mapstructure:"max_alerts_per_hour" json:"max_alerts_per_hour"`
+		AlertCooldown    time.Duration `mapstructure:"alert_cooldown" json:"alert_cooldown"`
+		EnableDashboard  bool          `mapstructure:"enable_dashboard" json:"enable_dashboard"`
+		DashboardPort    int           `mapstructure:"dashboard_port" json:"dashboard_port"`
+		EnableMetrics    bool          `mapstructure:"enable_metrics" json:"enable_metrics"`
+		MetricsPort      int           `mapstructure:"metrics_port" json:"metrics_port"`
 	} `mapstructure:"base" json:"base"`
 
 	// 系统监控配置
 	SystemMonitoring struct {
-		Enabled           bool          `mapstructure:"enabled" json:"enabled"`
-		CheckInterval     time.Duration `mapstructure:"check_interval" json:"check_interval"`
-		CPUThreshold      float64       `mapstructure:"cpu_threshold" json:"cpu_threshold"`
-		MemoryThreshold   float64       `mapstructure:"memory_threshold" json:"memory_threshold"`
-		DiskThreshold     float64       `mapstructure:"disk_threshold" json:"disk_threshold"`
-		NetworkThreshold  float64       `mapstructure:"network_threshold" json:"network_threshold"`
-		ProcessThreshold  int           `mapstructure:"process_threshold" json:"process_threshold"`
-		LoadAverageThreshold float64    `mapstructure:"load_average_threshold" json:"load_average_threshold"`
+		Enabled              bool          `mapstructure:"enabled" json:"enabled"`
+		CheckInterval        time.Duration `mapstructure:"check_interval" json:"check_interval"`
+		CPUThreshold         float64       `mapstructure:"cpu_threshold" json:"cpu_threshold"`
+		MemoryThreshold      float64       `mapstructure:"memory_threshold" json:"memory_threshold"`
+		DiskThreshold        float64       `mapstructure:"disk_threshold" json:"disk_threshold"`
+		NetworkThreshold     float64       `mapstructure:"network_threshold" json:"network_threshold"`
+		ProcessThreshold     int           `mapstructure:"process_threshold" json:"process_threshold"`
+		LoadAverageThreshold float64       `mapstructure:"load_average_threshold" json:"load_average_threshold"`
 	} `mapstructure:"system" json:"system"`
 
 	// 应用监控配置
 	ApplicationMonitoring struct {
-		Enabled              bool          `mapstructure:"enabled" json:"enabled"`
-		CheckInterval        time.Duration `mapstructure:"check_interval" json:"check_interval"`
+		Enabled               bool          `mapstructure:"enabled" json:"enabled"`
+		CheckInterval         time.Duration `mapstructure:"check_interval" json:"check_interval"`
 		ResponseTimeThreshold time.Duration `mapstructure:"response_time_threshold" json:"response_time_threshold"`
-		ErrorRateThreshold   float64       `mapstructure:"error_rate_threshold" json:"error_rate_threshold"`
-		ThroughputThreshold  int           `mapstructure:"throughput_threshold" json:"throughput_threshold"`
-		MemoryLeakThreshold  float64       `mapstructure:"memory_leak_threshold" json:"memory_leak_threshold"`
-		GoroutineThreshold   int           `mapstructure:"goroutine_threshold" json:"goroutine_threshold"`
-		GCThreshold          time.Duration `mapstructure:"gc_threshold" json:"gc_threshold"`
+		ErrorRateThreshold    float64       `mapstructure:"error_rate_threshold" json:"error_rate_threshold"`
+		ThroughputThreshold   int           `mapstructure:"throughput_threshold" json:"throughput_threshold"`
+		MemoryLeakThreshold   float64       `mapstructure:"memory_leak_threshold" json:"memory_leak_threshold"`
+		GoroutineThreshold    int           `mapstructure:"goroutine_threshold" json:"goroutine_threshold"`
+		GCThreshold           time.Duration `mapstructure:"gc_threshold" json:"gc_threshold"`
+		HTTPEnabled           bool          `mapstructure:"http_enabled" json:"http_enabled"`
+		DatabaseEnabled       bool          `mapstructure:"database_enabled" json:"database_enabled"`
+		CacheEnabled          bool          `mapstructure:"cache_enabled" json:"cache_enabled"`
+		GoRuntimeEnabled      bool          `mapstructure:"go_runtime_enabled" json:"go_runtime_enabled"`
 	} `mapstructure:"application" json:"application"`
 
 	// 数据库监控配置
 	DatabaseMonitoring struct {
-		Enabled              bool          `mapstructure:"enabled" json:"enabled"`
-		CheckInterval        time.Duration `mapstructure:"check_interval" json:"check_interval"`
-		ConnectionThreshold  int           `mapstructure:"connection_threshold" json:"connection_threshold"`
-		SlowQueryThreshold   time.Duration `mapstructure:"slow_query_threshold" json:"slow_query_threshold"`
+		Enabled               bool          `mapstructure:"enabled" json:"enabled"`
+		CheckInterval         time.Duration `mapstructure:"check_interval" json:"check_interval"`
+		ConnectionThreshold   int           `mapstructure:"connection_threshold" json:"connection_threshold"`
+		SlowQueryThreshold    time.Duration `mapstructure:"slow_query_threshold" json:"slow_query_threshold"`
 		QueryTimeoutThreshold time.Duration `mapstructure:"query_timeout_threshold" json:"query_timeout_threshold"`
-		DeadlockThreshold    int           `mapstructure:"deadlock_threshold" json:"deadlock_threshold"`
-		LockWaitThreshold    time.Duration `mapstructure:"lock_wait_threshold" json:"lock_wait_threshold"`
-		TableSizeThreshold   int64         `mapstructure:"table_size_threshold" json:"table_size_threshold"`
+		DeadlockThreshold     int           `mapstructure:"deadlock_threshold" json:"deadlock_threshold"`
+		LockWaitThreshold     time.Duration `mapstructure:"lock_wait_threshold" json:"lock_wait_threshold"`
+		TableSizeThreshold    int64         `mapstructure:"table_size_threshold" json:"table_size_threshold"`
 	} `mapstructure:"database" json:"database"`
 
 	// 缓存监控配置
@@ -65,32 +69,32 @@ type MonitoringConfig struct {
 		HitRateThreshold     float64       `mapstructure:"hit_rate_threshold" json:"hit_rate_threshold"`
 		MemoryUsageThreshold float64       `mapstructure:"memory_usage_threshold" json:"memory_usage_threshold"`
 		ConnectionThreshold  int           `mapstructure:"connection_threshold" json:"connection_threshold"`
-		EvictionThreshold   int           `mapstructure:"eviction_threshold" json:"eviction_threshold"`
+		EvictionThreshold    int           `mapstructure:"eviction_threshold" json:"eviction_threshold"`
 		ExpiredKeysThreshold int           `mapstructure:"expired_keys_threshold" json:"expired_keys_threshold"`
 	} `mapstructure:"cache" json:"cache"`
 
 	// 业务监控配置
 	BusinessMonitoring struct {
-		Enabled              bool          `mapstructure:"enabled" json:"enabled"`
-		CheckInterval        time.Duration `mapstructure:"check_interval" json:"check_interval"`
-		UserActivityThreshold int           `mapstructure:"user_activity_threshold" json:"user_activity_threshold"`
-		APIUsageThreshold    int           `mapstructure:"api_usage_threshold" json:"api_usage_threshold"`
-		ErrorLogThreshold    int           `mapstructure:"error_log_threshold" json:"error_log_threshold"`
-		SecurityEventThreshold int         `mapstructure:"security_event_threshold" json:"security_event_threshold"`
-		DataSyncThreshold    time.Duration `mapstructure:"data_sync_threshold" json:"data_sync_threshold"`
+		Enabled                bool          `mapstructure:"enabled" json:"enabled"`
+		CheckInterval          time.Duration `mapstructure:"check_interval" json:"check_interval"`
+		UserActivityThreshold  int           `mapstructure:"user_activity_threshold" json:"user_activity_threshold"`
+		APIUsageThreshold      int           `mapstructure:"api_usage_threshold" json:"api_usage_threshold"`
+		ErrorLogThreshold      int           `mapstructure:"error_log_threshold" json:"error_log_threshold"`
+		SecurityEventThreshold int           `mapstructure:"security_event_threshold" json:"security_event_threshold"`
+		DataSyncThreshold      time.Duration `mapstructure:"data_sync_threshold" json:"data_sync_threshold"`
 	} `mapstructure:"business" json:"business"`
 
 	// 告警配置
 	AlertConfig struct {
-		Enabled              bool          `mapstructure:"enabled" json:"enabled"`
-		DefaultSeverity      string        `mapstructure:"default_severity" json:"default_severity"`
-		EscalationEnabled    bool          `mapstructure:"escalation_enabled" json:"escalation_enabled"`
-		EscalationDelay      time.Duration `mapstructure:"escalation_delay" json:"escalation_delay"`
-		MaxEscalationLevel   int           `mapstructure:"max_escalation_level" json:"max_escalation_level"`
-		AutoResolveEnabled   bool          `mapstructure:"auto_resolve_enabled" json:"auto_resolve_enabled"`
-		AutoResolveDelay     time.Duration `mapstructure:"auto_resolve_delay" json:"auto_resolve_delay"`
-		SuppressionEnabled   bool          `mapstructure:"suppression_enabled" json:"suppression_enabled"`
-		SuppressionWindow    time.Duration `mapstructure:"suppression_window" json:"suppression_window"`
+		Enabled            bool          `mapstructure:"enabled" json:"enabled"`
+		DefaultSeverity    string        `mapstructure:"default_severity" json:"default_severity"`
+		EscalationEnabled  bool          `mapstructure:"escalation_enabled" json:"escalation_enabled"`
+		EscalationDelay    time.Duration `mapstructure:"escalation_delay" json:"escalation_delay"`
+		MaxEscalationLevel int           `mapstructure:"max_escalation_level" json:"max_escalation_level"`
+		AutoResolveEnabled bool          `mapstructure:"auto_resolve_enabled" json:"auto_resolve_enabled"`
+		AutoResolveDelay   time.Duration `mapstructure:"auto_resolve_delay" json:"auto_resolve_delay"`
+		SuppressionEnabled bool          `mapstructure:"suppression_enabled" json:"suppression_enabled"`
+		SuppressionWindow  time.Duration `mapstructure:"suppression_window" json:"suppression_window"`
 	} `mapstructure:"alert" json:"alert"`
 
 	// 通知配置
@@ -107,59 +111,59 @@ type MonitoringConfig struct {
 		} `mapstructure:"email" json:"email"`
 
 		Webhook struct {
-			Enabled     bool   `mapstructure:"enabled" json:"enabled"`
-			URL         string `mapstructure:"url" json:"url"`
-			Method      string `mapstructure:"method" json:"method"`
-			Headers     string `mapstructure:"headers" json:"headers"`
-			Timeout     time.Duration `mapstructure:"timeout" json:"timeout"`
-			RetryCount  int    `mapstructure:"retry_count" json:"retry_count"`
+			Enabled    bool          `mapstructure:"enabled" json:"enabled"`
+			URL        string        `mapstructure:"url" json:"url"`
+			Method     string        `mapstructure:"method" json:"method"`
+			Headers    string        `mapstructure:"headers" json:"headers"`
+			Timeout    time.Duration `mapstructure:"timeout" json:"timeout"`
+			RetryCount int           `mapstructure:"retry_count" json:"retry_count"`
 		} `mapstructure:"webhook" json:"webhook"`
 
 		Slack struct {
-			Enabled     bool   `mapstructure:"enabled" json:"enabled"`
-			WebhookURL  string `mapstructure:"webhook_url" json:"webhook_url"`
-			Channel     string `mapstructure:"channel" json:"channel"`
-			Username    string `mapstructure:"username" json:"username"`
-			IconEmoji   string `mapstructure:"icon_emoji" json:"icon_emoji"`
+			Enabled    bool   `mapstructure:"enabled" json:"enabled"`
+			WebhookURL string `mapstructure:"webhook_url" json:"webhook_url"`
+			Channel    string `mapstructure:"channel" json:"channel"`
+			Username   string `mapstructure:"username" json:"username"`
+			IconEmoji  string `mapstructure:"icon_emoji" json:"icon_emoji"`
 		} `mapstructure:"slack" json:"slack"`
 
 		DingTalk struct {
-			Enabled     bool   `mapstructure:"enabled" json:"enabled"`
-			WebhookURL  string `mapstructure:"webhook_url" json:"webhook_url"`
-			Secret      string `mapstructure:"secret" json:"secret"`
-			AtMobiles   string `mapstructure:"at_mobiles" json:"at_mobiles"`
+			Enabled    bool   `mapstructure:"enabled" json:"enabled"`
+			WebhookURL string `mapstructure:"webhook_url" json:"webhook_url"`
+			Secret     string `mapstructure:"secret" json:"secret"`
+			AtMobiles  string `mapstructure:"at_mobiles" json:"at_mobiles"`
 		} `mapstructure:"dingtalk" json:"dingtalk"`
 
 		SMS struct {
-			Enabled     bool   `mapstructure:"enabled" json:"enabled"`
-			Provider    string `mapstructure:"provider" json:"provider"`
-			APIKey      string `mapstructure:"api_key" json:"api_key"`
-			APISecret   string `mapstructure:"api_secret" json:"api_secret"`
+			Enabled      bool   `mapstructure:"enabled" json:"enabled"`
+			Provider     string `mapstructure:"provider" json:"provider"`
+			APIKey       string `mapstructure:"api_key" json:"api_key"`
+			APISecret    string `mapstructure:"api_secret" json:"api_secret"`
 			PhoneNumbers string `mapstructure:"phone_numbers" json:"phone_numbers"`
 		} `mapstructure:"sms" json:"sms"`
 	} `mapstructure:"notification" json:"notification"`
 
 	// 存储配置
 	StorageConfig struct {
-		Type              string        `mapstructure:"type" json:"type"`
+		Type     string `mapstructure:"type" json:"type"`
 		Database struct {
-			Enabled     bool   `mapstructure:"enabled" json:"enabled"`
-			TablePrefix string `mapstructure:"table_prefix" json:"table_prefix"`
+			Enabled     bool          `mapstructure:"enabled" json:"enabled"`
+			TablePrefix string        `mapstructure:"table_prefix" json:"table_prefix"`
 			Retention   time.Duration `mapstructure:"retention" json:"retention"`
 		} `mapstructure:"database" json:"database"`
-		
+
 		File struct {
-			Enabled     bool   `mapstructure:"enabled" json:"enabled"`
-			Path        string `mapstructure:"path" json:"path"`
-			Format      string `mapstructure:"format" json:"format"`
-			MaxSize     int64  `mapstructure:"max_size" json:"max_size"`
-			MaxAge      time.Duration `mapstructure:"max_age" json:"max_age"`
+			Enabled bool          `mapstructure:"enabled" json:"enabled"`
+			Path    string        `mapstructure:"path" json:"path"`
+			Format  string        `mapstructure:"format" json:"format"`
+			MaxSize int64         `mapstructure:"max_size" json:"max_size"`
+			MaxAge  time.Duration `mapstructure:"max_age" json:"max_age"`
 		} `mapstructure:"file" json:"file"`
-		
+
 		Redis struct {
-			Enabled     bool   `mapstructure:"enabled" json:"enabled"`
-			KeyPrefix   string `mapstructure:"key_prefix" json:"key_prefix"`
-			TTL         time.Duration `mapstructure:"ttl" json:"ttl"`
+			Enabled   bool          `mapstructure:"enabled" json:"enabled"`
+			KeyPrefix string        `mapstructure:"key_prefix" json:"key_prefix"`
+			TTL       time.Duration `mapstructure:"ttl" json:"ttl"`
 		} `mapstructure:"redis" json:"redis"`
 	} `mapstructure:"storage" json:"storage"`
 }
