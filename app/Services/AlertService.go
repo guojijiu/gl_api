@@ -57,13 +57,13 @@ type Alert struct {
 // AlertService 告警服务
 type AlertService struct {
 	emailService      *EmailService
-	monitoringService *MonitoringService
+	monitoringService *OptimizedMonitoringService
 	rules             map[string]*AlertRule
 	alerts            map[string]*Alert
 }
 
 // NewAlertService 创建告警服务
-func NewAlertService(emailService *EmailService, monitoringService *MonitoringService) *AlertService {
+func NewAlertService(emailService *EmailService, monitoringService *OptimizedMonitoringService) *AlertService {
 	return &AlertService{
 		emailService:      emailService,
 		monitoringService: monitoringService,

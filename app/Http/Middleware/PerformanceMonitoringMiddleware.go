@@ -12,12 +12,12 @@ import (
 
 // PerformanceMonitoringMiddleware 性能监控中间件
 type PerformanceMonitoringMiddleware struct {
-	monitoringService *Services.MonitoringService
+	monitoringService *Services.OptimizedMonitoringService
 	excludePaths      map[string]bool
 }
 
 // NewPerformanceMonitoringMiddleware 创建性能监控中间件
-func NewPerformanceMonitoringMiddleware(service *Services.MonitoringService, excludePaths []string) *PerformanceMonitoringMiddleware {
+func NewPerformanceMonitoringMiddleware(service *Services.OptimizedMonitoringService, excludePaths []string) *PerformanceMonitoringMiddleware {
 	excludeMap := make(map[string]bool)
 	for _, path := range excludePaths {
 		excludeMap[path] = true
@@ -274,7 +274,7 @@ func (m *PerformanceMonitoringMiddleware) recordPathSpecificMetrics(path string,
 }
 
 // WebSocketMetricsMiddleware WebSocket性能监控中间件
-func WebSocketMetricsMiddleware(monitoringService *Services.MonitoringService) gin.HandlerFunc {
+func WebSocketMetricsMiddleware(monitoringService *Services.OptimizedMonitoringService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if monitoringService == nil {
 			c.Next()
@@ -311,7 +311,7 @@ func WebSocketMetricsMiddleware(monitoringService *Services.MonitoringService) g
 }
 
 // DatabaseMetricsMiddleware 数据库性能监控中间件
-func DatabaseMetricsMiddleware(monitoringService *Services.MonitoringService) gin.HandlerFunc {
+func DatabaseMetricsMiddleware(monitoringService *Services.OptimizedMonitoringService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if monitoringService == nil {
 			c.Next()
@@ -327,7 +327,7 @@ func DatabaseMetricsMiddleware(monitoringService *Services.MonitoringService) gi
 }
 
 // CacheMetricsMiddleware 缓存性能监控中间件
-func CacheMetricsMiddleware(monitoringService *Services.MonitoringService) gin.HandlerFunc {
+func CacheMetricsMiddleware(monitoringService *Services.OptimizedMonitoringService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if monitoringService == nil {
 			c.Next()
@@ -342,7 +342,7 @@ func CacheMetricsMiddleware(monitoringService *Services.MonitoringService) gin.H
 }
 
 // BusinessMetricsMiddleware 业务指标监控中间件
-func BusinessMetricsMiddleware(monitoringService *Services.MonitoringService) gin.HandlerFunc {
+func BusinessMetricsMiddleware(monitoringService *Services.OptimizedMonitoringService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if monitoringService == nil {
 			c.Next()

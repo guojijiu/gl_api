@@ -61,7 +61,7 @@ func RegisterPerformanceMonitoringRoutes(router *gin.Engine, controller *Control
 }
 
 // RegisterPerformanceMiddleware 注册性能监控中间件
-func RegisterPerformanceMiddleware(router *gin.Engine, monitoringService *Services.MonitoringService) {
+func RegisterPerformanceMiddleware(router *gin.Engine, monitoringService *Services.OptimizedMonitoringService) {
 	// 排除的路径
 	excludePaths := []string{
 		"/health",

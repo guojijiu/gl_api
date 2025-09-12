@@ -6,6 +6,7 @@ import (
 	"cloud-platform-api/app/Http/Requests"
 	"cloud-platform-api/app/Models"
 	"cloud-platform-api/app/Utils"
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -226,16 +227,12 @@ func (s *AuthService) Logout(userID string) error {
 
 	// 清理用户会话数据
 	// 清理用户相关的缓存和会话信息
-	cacheService := NewCacheService(redisService, &CacheConfig{
-		Prefix:      "app:",
-		DefaultTTL:  5 * time.Minute,
-		MaxTTL:      1 * time.Hour,
-		EnableCache: redisService != nil,
-	})
+	cacheService := NewOptimizedCacheService()
 
 	// 清理用户缓存
-	cacheService.Delete("user:" + userID)
-	cacheService.Delete("session:" + userID)
+	ctx := context.Background()
+	cacheService.Delete(ctx, "user:"+userID)
+	cacheService.Delete(ctx, "session:"+userID)
 
 	return nil
 }

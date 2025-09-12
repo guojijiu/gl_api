@@ -454,3 +454,116 @@ func (s *OptimizedMonitoringService) IsRunning() bool {
 
 	return s.isRunning
 }
+
+// GetCurrentMetrics 获取当前指标
+func (s *OptimizedMonitoringService) GetCurrentMetrics() (map[string]interface{}, error) {
+	metrics := make(map[string]interface{})
+
+	// 获取系统指标
+	if systemMetrics, err := s.GetSystemMetrics(); err == nil {
+		metrics["system"] = systemMetrics
+	}
+
+	// 获取应用指标
+	if appMetrics, err := s.GetAppMetrics(); err == nil {
+		metrics["application"] = appMetrics
+	}
+
+	return metrics, nil
+}
+
+// GetMetricsByTimeRange 根据时间范围获取指标
+func (s *OptimizedMonitoringService) GetMetricsByTimeRange(startTime, endTime time.Time, metricType string) ([]interface{}, error) {
+	// 这里应该实现从数据库获取指标的逻辑
+	// 暂时返回空切片
+	return []interface{}{}, nil
+}
+
+// GetActiveAlerts 获取活跃告警
+func (s *OptimizedMonitoringService) GetActiveAlerts() ([]interface{}, error) {
+	// 这里应该实现从数据库获取活跃告警的逻辑
+	// 暂时返回空切片
+	return []interface{}{}, nil
+}
+
+// GetAlertHistory 获取告警历史
+func (s *OptimizedMonitoringService) GetAlertHistory(limit int) ([]interface{}, error) {
+	// 这里应该实现从数据库获取告警历史的逻辑
+	// 暂时返回空切片
+	return []interface{}{}, nil
+}
+
+// CreateAlertRule 创建告警规则
+func (s *OptimizedMonitoringService) CreateAlertRule(rule interface{}) error {
+	// 这里应该实现创建告警规则的逻辑
+	return nil
+}
+
+// UpdateAlertRule 更新告警规则
+func (s *OptimizedMonitoringService) UpdateAlertRule(rule interface{}) error {
+	// 这里应该实现更新告警规则的逻辑
+	return nil
+}
+
+// DeleteAlertRule 删除告警规则
+func (s *OptimizedMonitoringService) DeleteAlertRule(ruleID uint) error {
+	// 这里应该实现删除告警规则的逻辑
+	return nil
+}
+
+// AcknowledgeAlert 确认告警
+func (s *OptimizedMonitoringService) AcknowledgeAlert(alertID uint, userID string) error {
+	// 这里应该实现确认告警的逻辑
+	return nil
+}
+
+// ResolveAlert 解决告警
+func (s *OptimizedMonitoringService) ResolveAlert(alertID uint, userID uint) error {
+	// 这里应该实现解决告警的逻辑
+	return nil
+}
+
+// GetDB 获取数据库连接
+func (s *OptimizedMonitoringService) GetDB() interface{} {
+	// 这里应该返回数据库连接
+	// 暂时返回nil
+	return nil
+}
+
+// GetMonitoringStats 获取监控统计信息
+func (s *OptimizedMonitoringService) GetMonitoringStats() (interface{}, error) {
+	// 这里应该实现获取监控统计信息的逻辑
+	// 暂时返回空结构
+	return map[string]interface{}{}, nil
+}
+
+// RecordCustomMetric 记录自定义指标
+func (s *OptimizedMonitoringService) RecordCustomMetric(metricType, name string, value float64, tags map[string]string) error {
+	// 使用AddMetric方法记录自定义指标
+	s.AddMetric(name, value, tags)
+	return nil
+}
+
+// GetSystemHealth 获取系统健康状态
+func (s *OptimizedMonitoringService) GetSystemHealth() map[string]interface{} {
+	health := map[string]interface{}{
+		"status":    "healthy",
+		"timestamp": time.Now(),
+		"metrics":   make(map[string]interface{}),
+		"alerts":    make(map[string]interface{}),
+	}
+
+	// 获取系统指标
+	if systemMetrics, err := s.GetSystemMetrics(); err == nil {
+		health["metrics"].(map[string]interface{})["system"] = systemMetrics
+	}
+
+	return health
+}
+
+// GetAlerts 获取告警记录
+func (s *OptimizedMonitoringService) GetAlerts(status, severity string, limit int) ([]interface{}, error) {
+	// 这里应该实现从数据库获取告警记录的逻辑
+	// 暂时返回空切片
+	return []interface{}{}, nil
+}

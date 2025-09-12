@@ -100,12 +100,7 @@ func NewApp() *App {
 	}
 
 	// 初始化缓存服务
-	cacheService := Services.NewCacheService(redisService, &Services.CacheConfig{
-		Prefix:      "app:",
-		DefaultTTL:  5 * time.Minute,
-		MaxTTL:      1 * time.Hour,
-		EnableCache: redisService != nil,
-	})
+	cacheService := Services.NewOptimizedCacheService()
 
 	// 使用LogManagerService初始化数据库（启用SQL日志）
 	Database.InitDBWithLogManager(logManager)

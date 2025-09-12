@@ -401,3 +401,10 @@ func (s *OptimizedCacheService) Stop() error {
 	s.cancel()
 	return nil
 }
+
+// WarmCache 预热缓存
+func (s *OptimizedCacheService) WarmCache() error {
+	// 这里可以实现缓存预热逻辑
+	// 例如：预加载用户列表、分类列表等
+	return nil
+}

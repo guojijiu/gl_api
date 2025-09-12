@@ -91,29 +91,12 @@ func (p *BusinessServiceProvider) Register(container *Container) error {
 
 	// 注册缓存服务
 	container.RegisterSingleton("cache_service", func() interface{} {
-		redisService, err := container.Get("redis_service")
-		if err != nil || redisService == nil {
-			// 如果Redis服务不可用，返回内存缓存服务
-			return Services.NewCacheService(nil, &Services.CacheConfig{
-				Prefix:      "app:",
-				DefaultTTL:  5 * time.Minute,
-				MaxTTL:      1 * time.Hour,
-				EnableCache: true,
-			})
-		}
-		return Services.NewCacheService(redisService.(*Services.RedisService), &Services.CacheConfig{
-			Prefix:      "app:",
-			DefaultTTL:  5 * time.Minute,
-			MaxTTL:      1 * time.Hour,
-			EnableCache: true,
-		})
+		return Services.NewOptimizedCacheService()
 	})
 
 	// 注册监控服务
 	container.RegisterSingleton("monitoring_service", func() interface{} {
-		db, _ := container.Get("database")
-		config, _ := container.Get("config")
-		return Services.NewMonitoringService(db.(*gorm.DB), &config.(*Config.Config).Monitoring)
+		return Services.NewOptimizedMonitoringService()
 	})
 
 	// 注册邮件服务

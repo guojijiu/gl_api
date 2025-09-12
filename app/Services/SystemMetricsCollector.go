@@ -14,11 +14,12 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
+	"gorm.io/gorm"
 )
 
 // SystemMetricsCollector 系统指标收集器
 type SystemMetricsCollector struct {
-	service    *MonitoringService
+	service    *OptimizedMonitoringService
 	mu         sync.RWMutex
 	cache      map[string]interface{}
 	lastUpdate time.Time
@@ -26,7 +27,7 @@ type SystemMetricsCollector struct {
 }
 
 // NewSystemMetricsCollector 创建系统指标收集器
-func NewSystemMetricsCollector(service *MonitoringService) *SystemMetricsCollector {
+func NewSystemMetricsCollector(service *OptimizedMonitoringService) *SystemMetricsCollector {
 	return &SystemMetricsCollector{
 		service:  service,
 		cache:    make(map[string]interface{}),
@@ -376,7 +377,7 @@ func (c *SystemMetricsCollector) saveMetricToDB(ctx context.Context, metricType,
 			Severity:    "info",
 		}
 
-		if err := c.service.db.WithContext(ctx).Create(metric).Error; err != nil {
+		if err := c.service.DB.(*gorm.DB).WithContext(ctx).Create(metric).Error; err != nil {
 			return err
 		}
 	}
