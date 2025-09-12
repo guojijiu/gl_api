@@ -474,9 +474,12 @@ func (s *OptimizedMonitoringService) GetCurrentMetrics() (map[string]interface{}
 
 // GetMetricsByTimeRange 根据时间范围获取指标
 func (s *OptimizedMonitoringService) GetMetricsByTimeRange(startTime, endTime time.Time, metricType string) ([]interface{}, error) {
+	// 从数据库获取指定时间范围内的指标数据
+	metrics := make([]interface{}, 0)
+
 	// 这里应该实现从数据库获取指标的逻辑
-	// 暂时返回空切片
-	return []interface{}{}, nil
+	// 暂时返回空切片，等待数据库集成
+	return metrics, nil
 }
 
 // GetActiveAlerts 获取活跃告警

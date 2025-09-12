@@ -59,6 +59,12 @@ go install github.com/stretchr/testify@latest
 
 # 安装热重载工具
 go install github.com/cosmtrek/air@latest
+
+# 安装性能分析工具
+go install github.com/google/pprof@latest
+
+# 安装依赖检查工具
+go install github.com/golang/dep/cmd/dep@latest
 ```
 
 ### 4. 项目初始化
@@ -770,6 +776,52 @@ EOF
 
 # 启动热重载
 air
+```
+
+### 4. 配置热重载开发
+```go
+// 配置热重载示例
+func setupConfigHotReload() {
+    // 创建热重载管理器
+    hotReloadManager := Config.NewHotReloadManager("config.yaml")
+    
+    // 添加重载回调
+    hotReloadManager.AddReloadCallback(func(config *Config.Config) {
+        log.Println("配置已重载")
+        // 更新相关服务配置
+        updateServiceConfigs(config)
+    })
+    
+    // 开始监控
+    if err := hotReloadManager.StartWatching(); err != nil {
+        log.Fatal("启动配置热重载失败:", err)
+    }
+    
+    // 优雅关闭
+    defer hotReloadManager.StopWatching()
+}
+```
+
+### 5. 熔断器开发
+```go
+// 熔断器使用示例
+func setupCircuitBreaker() {
+    // 创建熔断器
+    circuitBreaker := NewCircuitBreaker("user-service", CircuitBreakerConfig{
+        MaxRequests: 10,
+        Interval:    time.Minute,
+        Timeout:     time.Second * 30,
+    })
+    
+    // 在服务调用中使用
+    if circuitBreaker.AllowRequest() {
+        result, err := callExternalService()
+        circuitBreaker.RecordResult(err == nil, time.Since(start))
+        return result, err
+    } else {
+        return nil, errors.New("熔断器开启，请求被拒绝")
+    }
+}
 ```
 
 ## ⚡ 性能优化

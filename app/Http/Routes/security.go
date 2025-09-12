@@ -15,31 +15,37 @@ func RegisterSecurityRoutes(router *gin.Engine, controller *Controllers.Security
 	{
 		// 安全事件相关路由
 		securityGroup.GET("/events", controller.GetSecurityEvents)
-		
+
 		// 威胁情报相关路由
 		securityGroup.GET("/threats", controller.GetThreatIntelligence)
-		
+
 		// 登录尝试相关路由
 		securityGroup.GET("/login-attempts", controller.GetLoginAttempts)
-		
+
 		// 账户锁定相关路由
 		securityGroup.GET("/account-lockouts", controller.GetAccountLockouts)
 		// 账户管理
 		// TODO: 实现账户解锁功能
-		
+		// securityGroup.POST("/account-lockouts/:id/unlock", controller.UnlockAccount)
+
 		// 安全告警相关路由
 		securityGroup.GET("/alerts", controller.GetSecurityAlerts)
 		// TODO: 实现告警确认功能
+		// securityGroup.POST("/alerts/:id/acknowledge", controller.AcknowledgeAlert)
 		// TODO: 实现告警解决功能
-		
+		// securityGroup.POST("/alerts/:id/resolve", controller.ResolveAlert)
+
 		// 安全报告相关路由
 		securityGroup.GET("/reports", controller.GetSecurityReports)
 		// TODO: 实现安全报告生成功能
-		
+		// securityGroup.POST("/reports/generate", controller.GenerateSecurityReport)
+
 		// 安全指标相关路由
 		// TODO: 实现安全指标获取功能
-		
+		// securityGroup.GET("/metrics", controller.GetSecurityMetrics)
+
 		// 安全仪表板相关路由
 		// TODO: 实现安全仪表板功能
+		// securityGroup.GET("/dashboard", controller.GetSecurityDashboard)
 	}
 }

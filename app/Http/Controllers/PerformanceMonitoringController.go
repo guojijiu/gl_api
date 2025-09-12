@@ -250,7 +250,7 @@ func (c *PerformanceMonitoringController) CreateAlertRule(ctx *gin.Context) {
 		Severity:    req.Severity,
 		Enabled:     req.Enabled,
 		Description: req.Description,
-		CreatedBy:   1, // TODO: 从上下文获取用户ID
+		CreatedBy:   c.getUserIDFromContext(ctx), // 从上下文获取用户ID
 	}
 
 	if err := c.monitoringService.CreateAlertRule(rule); err != nil {
@@ -597,4 +597,27 @@ func (c *PerformanceMonitoringController) calculateSystemHealth(metrics map[stri
 	}
 
 	return health
+}
+
+// getUserIDFromContext 从上下文中获取用户ID
+func (c *PerformanceMonitoringController) getUserIDFromContext(ctx *gin.Context) uint {
+	userID, exists := ctx.Get("user_id")
+	if !exists {
+		return 0
+	}
+
+	// 根据类型转换
+	switch v := userID.(type) {
+	case uint:
+		return v
+	case int:
+		return uint(v)
+	case string:
+		if id, err := strconv.ParseUint(v, 10, 32); err == nil {
+			return uint(id)
+		}
+		return 0
+	default:
+		return 0
+	}
 }

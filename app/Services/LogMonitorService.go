@@ -25,68 +25,68 @@ type LogMonitorService struct {
 	config     *Config.LogConfig
 	ctx        context.Context
 	cancel     context.CancelFunc
-	
+
 	// 监控规则
-	rules      []*LogRule
-	rulesMu    sync.RWMutex
-	
+	rules   []*LogRule
+	rulesMu sync.RWMutex
+
 	// 告警状态
-	alerts     map[string]*Models.Alert
-	alertsMu   sync.RWMutex
-	
+	alerts   map[string]*Models.Alert
+	alertsMu sync.RWMutex
+
 	// 统计信息
-	stats      *MonitorStats
-	statsMu    sync.RWMutex
-	
+	stats   *MonitorStats
+	statsMu sync.RWMutex
+
 	// 通知器
-	notifiers  []LogNotifier
+	notifiers []LogNotifier
 }
 
 // LogRule 日志监控规则
 type LogRule struct {
-	ID          string                 `json:"id"`
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	Enabled     bool                   `json:"enabled"`
-	
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+
 	// 匹配条件
-	Logger      string                 `json:"logger"`      // 日志记录器名称
-	Level       Config.LogLevel        `json:"level"`       // 日志级别
-	Pattern     string                 `json:"pattern"`     // 正则表达式模式
-	Keywords    []string               `json:"keywords"`    // 关键词列表
-	Fields      map[string]interface{} `json:"fields"`      // 字段匹配
-	
+	Logger   string                 `json:"logger"`   // 日志记录器名称
+	Level    Config.LogLevel        `json:"level"`    // 日志级别
+	Pattern  string                 `json:"pattern"`  // 正则表达式模式
+	Keywords []string               `json:"keywords"` // 关键词列表
+	Fields   map[string]interface{} `json:"fields"`   // 字段匹配
+
 	// 触发条件
-	Threshold   int                    `json:"threshold"`   // 触发阈值
-	TimeWindow  time.Duration          `json:"time_window"` // 时间窗口
-	Count       int                    `json:"count"`       // 当前计数
-	
+	Threshold  int           `json:"threshold"`   // 触发阈值
+	TimeWindow time.Duration `json:"time_window"` // 时间窗口
+	Count      int           `json:"count"`       // 当前计数
+
 	// 告警配置
-	AlertLevel  string                 `json:"alert_level"` // 告警级别
-	Message     string                 `json:"message"`     // 告警消息
-	Actions     []string               `json:"actions"`     // 执行动作
-	
+	AlertLevel string   `json:"alert_level"` // 告警级别
+	Message    string   `json:"message"`     // 告警消息
+	Actions    []string `json:"actions"`     // 执行动作
+
 	// 状态
-	LastTrigger time.Time              `json:"last_trigger"`
-	TriggerCount int64                 `json:"trigger_count"`
-	
+	LastTrigger  time.Time `json:"last_trigger"`
+	TriggerCount int64     `json:"trigger_count"`
+
 	// 编译后的正则表达式
-	regex       *regexp.Regexp
+	regex *regexp.Regexp
 }
 
 // 使用 Models.Alert 代替本地定义
 
 // MonitorStats 监控统计信息
 type MonitorStats struct {
-	mu              sync.RWMutex
-	TotalRules      int                    `json:"total_rules"`
-	ActiveRules     int                    `json:"active_rules"`
-	TotalAlerts     int64                  `json:"total_alerts"`
-	ActiveAlerts    int                    `json:"active_alerts"`
-	ResolvedAlerts  int64                  `json:"resolved_alerts"`
-	RulesByLogger   map[string]int         `json:"rules_by_logger"`
-	AlertsByLevel   map[string]int64       `json:"alerts_by_level"`
-	LastReset       time.Time              `json:"last_reset"`
+	mu             sync.RWMutex
+	TotalRules     int              `json:"total_rules"`
+	ActiveRules    int              `json:"active_rules"`
+	TotalAlerts    int64            `json:"total_alerts"`
+	ActiveAlerts   int              `json:"active_alerts"`
+	ResolvedAlerts int64            `json:"resolved_alerts"`
+	RulesByLogger  map[string]int   `json:"rules_by_logger"`
+	AlertsByLevel  map[string]int64 `json:"alerts_by_level"`
+	LastReset      time.Time        `json:"last_reset"`
 }
 
 // LogNotifier 日志通知接口
@@ -115,7 +115,7 @@ type SlackNotifier struct {
 // NewLogMonitorService 创建日志监控服务
 func NewLogMonitorService(logManager *LogManagerService, config *Config.LogConfig) *LogMonitorService {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	service := &LogMonitorService{
 		logManager: logManager,
 		config:     config,
@@ -130,16 +130,16 @@ func NewLogMonitorService(logManager *LogManagerService, config *Config.LogConfi
 		},
 		notifiers: make([]LogNotifier, 0),
 	}
-	
+
 	// 初始化默认规则
 	service.initDefaultRules()
-	
+
 	// 初始化通知器
 	service.initNotifiers()
-	
+
 	// 启动监控
 	go service.startMonitoring()
-	
+
 	return service
 }
 
@@ -200,7 +200,7 @@ func (s *LogMonitorService) initDefaultRules() {
 			Actions:     []string{"email", "slack", "webhook"},
 		},
 	}
-	
+
 	for _, rule := range defaultRules {
 		s.AddRule(rule)
 	}
@@ -210,7 +210,7 @@ func (s *LogMonitorService) initDefaultRules() {
 func (s *LogMonitorService) initNotifiers() {
 	// 这里应该从配置中读取通知器配置
 	// 暂时添加示例通知器
-	
+
 	// 邮件通知器
 	if s.config.ErrorLog.NotifyEmail != "" {
 		emailNotifier := &EmailNotifier{
@@ -224,7 +224,7 @@ func (s *LogMonitorService) initNotifiers() {
 		}
 		s.notifiers = append(s.notifiers, emailNotifier)
 	}
-	
+
 	// Webhook通知器
 	webhookNotifier := &WebhookNotifier{
 		url: "http://localhost:8080/webhook/logs",
@@ -233,10 +233,10 @@ func (s *LogMonitorService) initNotifiers() {
 		},
 	}
 	s.notifiers = append(s.notifiers, webhookNotifier)
-	
+
 	// Slack通知器
 	slackNotifier := &SlackNotifier{
-		webhookURL: "https://hooks.slack.com/services/xxx/yyy/zzz",
+		webhookURL: "https://hooks.slack.com/services/your/webhook/url",
 		channel:    "#alerts",
 	}
 	s.notifiers = append(s.notifiers, slackNotifier)
@@ -252,12 +252,12 @@ func (s *LogMonitorService) AddRule(rule *LogRule) error {
 		}
 		rule.regex = regex
 	}
-	
+
 	s.rulesMu.Lock()
 	defer s.rulesMu.Unlock()
-	
+
 	s.rules = append(s.rules, rule)
-	
+
 	// 更新统计
 	s.stats.mu.Lock()
 	s.stats.TotalRules++
@@ -268,7 +268,7 @@ func (s *LogMonitorService) AddRule(rule *LogRule) error {
 		s.stats.RulesByLogger[rule.Logger]++
 	}
 	s.stats.mu.Unlock()
-	
+
 	return nil
 }
 
@@ -276,7 +276,7 @@ func (s *LogMonitorService) AddRule(rule *LogRule) error {
 func (s *LogMonitorService) RemoveRule(ruleID string) error {
 	s.rulesMu.Lock()
 	defer s.rulesMu.Unlock()
-	
+
 	for i, rule := range s.rules {
 		if rule.ID == ruleID {
 			// 更新统计
@@ -288,13 +288,13 @@ func (s *LogMonitorService) RemoveRule(ruleID string) error {
 				s.stats.RulesByLogger[rule.Logger]--
 			}
 			s.stats.mu.Unlock()
-			
+
 			// 移除规则
 			s.rules = append(s.rules[:i], s.rules[i+1:]...)
 			return nil
 		}
 	}
-	
+
 	return fmt.Errorf("规则不存在: %s", ruleID)
 }
 
@@ -302,7 +302,7 @@ func (s *LogMonitorService) RemoveRule(ruleID string) error {
 func (s *LogMonitorService) UpdateRule(ruleID string, updates map[string]interface{}) error {
 	s.rulesMu.Lock()
 	defer s.rulesMu.Unlock()
-	
+
 	for _, rule := range s.rules {
 		if rule.ID == ruleID {
 			// 更新字段
@@ -312,7 +312,7 @@ func (s *LogMonitorService) UpdateRule(ruleID string, updates map[string]interfa
 					if enabled, ok := value.(bool); ok {
 						oldEnabled := rule.Enabled
 						rule.Enabled = enabled
-						
+
 						// 更新统计
 						s.stats.mu.Lock()
 						if enabled && !oldEnabled {
@@ -339,7 +339,7 @@ func (s *LogMonitorService) UpdateRule(ruleID string, updates map[string]interfa
 			return nil
 		}
 	}
-	
+
 	return fmt.Errorf("规则不存在: %s", ruleID)
 }
 
@@ -347,7 +347,7 @@ func (s *LogMonitorService) UpdateRule(ruleID string, updates map[string]interfa
 func (s *LogMonitorService) GetRules() []*LogRule {
 	s.rulesMu.RLock()
 	defer s.rulesMu.RUnlock()
-	
+
 	rules := make([]*LogRule, len(s.rules))
 	copy(rules, s.rules)
 	return rules
@@ -357,7 +357,7 @@ func (s *LogMonitorService) GetRules() []*LogRule {
 func (s *LogMonitorService) GetRule(ruleID string) *LogRule {
 	s.rulesMu.RLock()
 	defer s.rulesMu.RUnlock()
-	
+
 	for _, rule := range s.rules {
 		if rule.ID == ruleID {
 			return rule
@@ -370,7 +370,7 @@ func (s *LogMonitorService) GetRule(ruleID string) *LogRule {
 func (s *LogMonitorService) startMonitoring() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -387,12 +387,12 @@ func (s *LogMonitorService) checkRules() {
 	rules := make([]*LogRule, len(s.rules))
 	copy(rules, s.rules)
 	s.rulesMu.RUnlock()
-	
+
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
-		
+
 		s.checkRule(rule)
 	}
 }
@@ -401,10 +401,10 @@ func (s *LogMonitorService) checkRules() {
 func (s *LogMonitorService) checkRule(rule *LogRule) {
 	// 获取日志统计
 	stats := s.logManager.GetStats()
-	
+
 	// 检查是否触发
 	triggered := false
-	
+
 	// 根据规则类型检查
 	switch {
 	case rule.Logger != "*":
@@ -422,7 +422,7 @@ func (s *LogMonitorService) checkRule(rule *LogRule) {
 			}
 		}
 	}
-	
+
 	if triggered {
 		s.triggerAlert(rule)
 	}
@@ -434,7 +434,7 @@ func (s *LogMonitorService) triggerAlert(rule *LogRule) {
 	if time.Since(rule.LastTrigger) < rule.TimeWindow {
 		return
 	}
-	
+
 	// 创建告警
 	alert := &Models.Alert{
 		RuleName:    rule.Name,
@@ -450,37 +450,37 @@ func (s *LogMonitorService) triggerAlert(rule *LogRule) {
 		FiredAt:     time.Now(),
 		Metadata:    fmt.Sprintf(`{"rule_id":"%s","threshold":%d,"time_window":"%s"}`, rule.ID, rule.Threshold, rule.TimeWindow.String()),
 	}
-	
+
 	// 保存告警
 	s.alertsMu.Lock()
 	alertID := fmt.Sprintf("alert_%s_%d", rule.ID, time.Now().Unix())
 	s.alerts[alertID] = alert
 	s.alertsMu.Unlock()
-	
+
 	// 更新规则状态
 	rule.LastTrigger = time.Now()
 	rule.TriggerCount++
-	
+
 	// 更新统计
 	s.stats.mu.Lock()
 	s.stats.TotalAlerts++
 	s.stats.ActiveAlerts++
 	s.stats.AlertsByLevel[rule.AlertLevel]++
 	s.stats.mu.Unlock()
-	
+
 	// 发送通知
 	go s.sendNotifications(alert, alertID)
-	
+
 	// 记录告警日志
 	s.logManager.LogSecurity(
 		context.Background(),
 		fmt.Sprintf("监控规则触发: %s", rule.Name),
 		Config.LogLevelWarning,
 		map[string]interface{}{
-			"rule_id":    rule.ID,
-			"alert_id":   alertID,
+			"rule_id":     rule.ID,
+			"alert_id":    alertID,
 			"alert_level": rule.AlertLevel,
-			"message":    rule.Message,
+			"message":     rule.Message,
 		},
 	)
 }
@@ -508,23 +508,23 @@ func (s *LogMonitorService) sendNotifications(alert *Models.Alert, alertID strin
 func (s *LogMonitorService) GetAlerts(status string, limit int) []*Models.Alert {
 	s.alertsMu.RLock()
 	defer s.alertsMu.RUnlock()
-	
+
 	var alerts []*Models.Alert
 	for _, alert := range s.alerts {
 		if status == "" || alert.Status == status {
 			alerts = append(alerts, alert)
 		}
 	}
-	
+
 	// 按时间排序（按触发时间倒序）
 	sort.Slice(alerts, func(i, j int) bool {
 		return alerts[i].FiredAt.After(alerts[j].FiredAt)
 	})
-	
+
 	if len(alerts) > limit {
 		alerts = alerts[:limit]
 	}
-	
+
 	return alerts
 }
 
@@ -532,26 +532,26 @@ func (s *LogMonitorService) GetAlerts(status string, limit int) []*Models.Alert 
 func (s *LogMonitorService) ResolveAlert(alertID string) error {
 	s.alertsMu.Lock()
 	defer s.alertsMu.Unlock()
-	
+
 	alert, exists := s.alerts[alertID]
 	if !exists {
 		return fmt.Errorf("告警不存在: %s", alertID)
 	}
-	
+
 	if alert.Status == "resolved" {
 		return fmt.Errorf("告警已经解决: %s", alertID)
 	}
-	
+
 	now := time.Now()
 	alert.Status = "resolved"
 	alert.ResolvedAt = &now
-	
+
 	// 更新统计
 	s.stats.mu.Lock()
 	s.stats.ActiveAlerts--
 	s.stats.ResolvedAlerts++
 	s.stats.mu.Unlock()
-	
+
 	return nil
 }
 
@@ -559,20 +559,20 @@ func (s *LogMonitorService) ResolveAlert(alertID string) error {
 func (s *LogMonitorService) AcknowledgeAlert(alertID string) error {
 	s.alertsMu.Lock()
 	defer s.alertsMu.Unlock()
-	
+
 	alert, exists := s.alerts[alertID]
 	if !exists {
 		return fmt.Errorf("告警不存在: %s", alertID)
 	}
-	
+
 	if alert.Status == "acknowledged" {
 		return fmt.Errorf("告警已经确认: %s", alertID)
 	}
-	
+
 	now := time.Now()
 	alert.Status = "acknowledged"
 	alert.AcknowledgedAt = &now
-	
+
 	return nil
 }
 
@@ -580,7 +580,7 @@ func (s *LogMonitorService) AcknowledgeAlert(alertID string) error {
 func (s *LogMonitorService) GetStats() *MonitorStats {
 	s.stats.mu.RLock()
 	defer s.stats.mu.RUnlock()
-	
+
 	stats := &MonitorStats{
 		TotalRules:     s.stats.TotalRules,
 		ActiveRules:    s.stats.ActiveRules,
@@ -591,15 +591,15 @@ func (s *LogMonitorService) GetStats() *MonitorStats {
 		AlertsByLevel:  make(map[string]int64),
 		LastReset:      s.stats.LastReset,
 	}
-	
+
 	for logger, count := range s.stats.RulesByLogger {
 		stats.RulesByLogger[logger] = count
 	}
-	
+
 	for level, count := range s.stats.AlertsByLevel {
 		stats.AlertsByLevel[level] = count
 	}
-	
+
 	return stats
 }
 

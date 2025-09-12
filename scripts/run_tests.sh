@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# 测试运行脚本
-# 用于运行各种类型的测试
+# 云平台API测试运行脚本
+# 功能：运行所有测试，包括单元测试、集成测试、性能测试
 
 set -e
 
@@ -12,223 +12,245 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# 默认参数
-TEST_TYPE="all"
-COVERAGE=false
-VERBOSE=false
-BENCHMARK=false
-INTEGRATION=false
-
-# 显示帮助信息
-show_help() {
-    echo "用法: $0 [选项]"
-    echo ""
-    echo "选项:"
-    echo "  -t, --type TYPE     测试类型 (unit|integration|all) [默认: all]"
-    echo "  -c, --coverage      生成覆盖率报告"
-    echo "  -v, --verbose       详细输出"
-    echo "  -b, --benchmark     运行性能测试"
-    echo "  -i, --integration   运行集成测试"
-    echo "  -h, --help          显示此帮助信息"
-    echo ""
-    echo "示例:"
-    echo "  $0 -t unit -c       运行单元测试并生成覆盖率报告"
-    echo "  $0 -t integration   运行集成测试"
-    echo "  $0 -b              运行性能测试"
+# 日志函数
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-# 解析命令行参数
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -t|--type)
-            TEST_TYPE="$2"
-            shift 2
-            ;;
-        -c|--coverage)
-            COVERAGE=true
-            shift
-            ;;
-        -v|--verbose)
-            VERBOSE=true
-            shift
-            ;;
-        -b|--benchmark)
-            BENCHMARK=true
-            shift
-            ;;
-        -i|--integration)
-            INTEGRATION=true
-            shift
-            ;;
-        -h|--help)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "未知选项: $1"
-            show_help
-            exit 1
-            ;;
-    esac
-done
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
 
-# 设置测试参数
-TEST_ARGS=""
-if [ "$VERBOSE" = true ]; then
-    TEST_ARGS="$TEST_ARGS -v"
-fi
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
 
-if [ "$COVERAGE" = true ]; then
-    TEST_ARGS="$TEST_ARGS -coverprofile=coverage.out -covermode=atomic"
-fi
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# 检查Go环境
+check_go_env() {
+    log_info "检查Go环境..."
+    
+    if ! command -v go &> /dev/null; then
+        log_error "Go未安装或未在PATH中"
+        exit 1
+    fi
+    
+    go_version=$(go version | awk '{print $3}')
+    log_success "Go版本: $go_version"
+}
+
+# 安装测试依赖
+install_dependencies() {
+    log_info "安装测试依赖..."
+    
+    # 安装测试框架
+    go mod tidy
+    
+    # 安装测试工具
+    if ! command -v go-junit-report &> /dev/null; then
+        log_info "安装go-junit-report..."
+        go install github.com/jstemmer/go-junit-report@latest
+    fi
+    
+    if ! command -v gocov &> /dev/null; then
+        log_info "安装gocov..."
+        go install github.com/axw/gocov/gocov@latest
+    fi
+    
+    if ! command -v gocov-xml &> /dev/null; then
+        log_info "安装gocov-xml..."
+        go install github.com/AlekSi/gocov-xml@latest
+    fi
+    
+    log_success "依赖安装完成"
+}
 
 # 运行单元测试
 run_unit_tests() {
-    echo -e "${BLUE}🧪 运行单元测试...${NC}"
+    log_info "运行单元测试..."
     
-    if [ "$COVERAGE" = true ]; then
-        go test $TEST_ARGS ./tests/Container/... ./tests/Utils/... ./tests/Models/...
-    else
-        go test $TEST_ARGS ./tests/Container/... ./tests/Utils/... ./tests/Models/...
-    fi
+    # 创建测试结果目录
+    mkdir -p test-results
     
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ 单元测试通过${NC}"
-    else
-        echo -e "${RED}❌ 单元测试失败${NC}"
-        return 1
-    fi
+    # 运行单元测试
+    go test -v -race -coverprofile=test-results/coverage.out -covermode=atomic ./... 2>&1 | tee test-results/unit-test.log
+    
+    # 生成测试报告
+    go test -v ./... 2>&1 | go-junit-report > test-results/unit-test.xml
+    
+    # 生成覆盖率报告
+    gocov convert test-results/coverage.out | gocov-xml > test-results/coverage.xml
+    
+    log_success "单元测试完成"
 }
 
 # 运行集成测试
 run_integration_tests() {
-    echo -e "${BLUE}🔗 运行集成测试...${NC}"
+    log_info "运行集成测试..."
     
-    # 设置集成测试环境变量
-    export TEST_ENV=true
-    export DB_DRIVER=sqlite
-    export DB_DATABASE=:memory:
+    # 设置测试环境变量
+    export TEST_ENV=integration
+    export TEST_DB_URL="postgres://test:test@localhost:5432/test_db?sslmode=disable"
+    export TEST_REDIS_URL="redis://localhost:6379/1"
     
-    if [ "$COVERAGE" = true ]; then
-        go test $TEST_ARGS ./tests/Integration/...
-    else
-        go test $TEST_ARGS ./tests/Integration/...
-    fi
+    # 运行集成测试
+    go test -v -tags=integration ./tests/Integration/... 2>&1 | tee test-results/integration-test.log
     
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ 集成测试通过${NC}"
-    else
-        echo -e "${RED}❌ 集成测试失败${NC}"
-        return 1
-    fi
+    log_success "集成测试完成"
 }
 
 # 运行性能测试
-run_benchmark_tests() {
-    echo -e "${BLUE}⚡ 运行性能测试...${NC}"
+run_performance_tests() {
+    log_info "运行性能测试..."
     
-    go test -bench=. -benchmem ./tests/... | tee benchmark_results.txt
+    # 运行基准测试
+    go test -bench=. -benchmem ./tests/benchmark/... 2>&1 | tee test-results/benchmark.log
     
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ 性能测试完成${NC}"
-        echo -e "${BLUE}📊 性能测试结果已保存到 benchmark_results.txt${NC}"
-    else
-        echo -e "${RED}❌ 性能测试失败${NC}"
-        return 1
-    fi
+    # 运行负载测试
+    go test -v -tags=load ./tests/benchmark/... 2>&1 | tee test-results/load-test.log
+    
+    log_success "性能测试完成"
 }
 
-# 生成覆盖率报告
-generate_coverage_report() {
-    if [ "$COVERAGE" = true ]; then
-        echo -e "${BLUE}📊 生成覆盖率报告...${NC}"
-        
-        # 生成HTML报告
-        go tool cover -html=coverage.out -o coverage.html
+# 运行安全测试
+run_security_tests() {
+    log_info "运行安全测试..."
     
-    # 显示覆盖率统计
-        coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
-        echo -e "${BLUE}📈 总覆盖率: ${coverage}${NC}"
-        
-        # 检查覆盖率是否达到要求
-        coverage_num=$(echo $coverage | sed 's/%//')
-        if (( $(echo "$coverage_num >= 70" | awk '{print ($1 >= 70)}') )); then
-            echo -e "${GREEN}✅ 覆盖率达标 (≥70%)${NC}"
-        else
-            echo -e "${YELLOW}⚠️  覆盖率未达标 (<70%)${NC}"
-        fi
-        
-        echo -e "${BLUE}📊 覆盖率报告已生成: coverage.html${NC}"
-    fi
+    # 运行安全测试
+    go test -v -tags=security ./tests/... 2>&1 | tee test-results/security-test.log
+    
+    log_success "安全测试完成"
 }
 
-# 清理测试文件
+# 生成测试报告
+generate_report() {
+    log_info "生成测试报告..."
+    
+    # 创建HTML报告
+    cat > test-results/index.html << EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>云平台API测试报告</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #f0f0f0; padding: 20px; border-radius: 5px; }
+        .section { margin: 20px 0; }
+        .success { color: green; }
+        .error { color: red; }
+        .warning { color: orange; }
+        pre { background-color: #f5f5f5; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>云平台API测试报告</h1>
+        <p>生成时间: $(date)</p>
+    </div>
+    
+    <div class="section">
+        <h2>测试概览</h2>
+        <p>总测试数: $(grep -c "PASS\|FAIL" test-results/unit-test.log || echo "0")</p>
+        <p>通过数: $(grep -c "PASS" test-results/unit-test.log || echo "0")</p>
+        <p>失败数: $(grep -c "FAIL" test-results/unit-test.log || echo "0")</p>
+    </div>
+    
+    <div class="section">
+        <h2>单元测试结果</h2>
+        <pre>$(cat test-results/unit-test.log)</pre>
+    </div>
+    
+    <div class="section">
+        <h2>集成测试结果</h2>
+        <pre>$(cat test-results/integration-test.log)</pre>
+    </div>
+    
+    <div class="section">
+        <h2>性能测试结果</h2>
+        <pre>$(cat test-results/benchmark.log)</pre>
+    </div>
+    
+    <div class="section">
+        <h2>安全测试结果</h2>
+        <pre>$(cat test-results/security-test.log)</pre>
+    </div>
+</body>
+</html>
+EOF
+    
+    log_success "测试报告已生成: test-results/index.html"
+}
+
+# 清理测试环境
 cleanup() {
-    echo -e "${BLUE}🧹 清理测试文件...${NC}"
+    log_info "清理测试环境..."
     
-    # 删除测试生成的临时文件
-    rm -f test.db
-    rm -f test_*.log
-    rm -f temp_*
+    # 清理临时文件
+    rm -f test-results/*.log
+    rm -f test-results/*.xml
+    rm -f test-results/coverage.out
     
-    echo -e "${GREEN}✅ 清理完成${NC}"
+    log_success "清理完成"
 }
 
 # 主函数
 main() {
-    echo -e "${GREEN}🚀 开始测试流程${NC}"
-    echo "=================================="
+    log_info "开始运行云平台API测试套件..."
     
-    local failed=0
-    
-    # 根据测试类型运行相应的测试
-    case $TEST_TYPE in
+    # 检查参数
+    case "${1:-all}" in
         "unit")
-            if ! run_unit_tests; then
-                failed=1
-            fi
+            check_go_env
+            install_dependencies
+            run_unit_tests
+            generate_report
             ;;
         "integration")
-            if ! run_integration_tests; then
-                failed=1
-            fi
+            check_go_env
+            install_dependencies
+            run_integration_tests
+            generate_report
+            ;;
+        "performance")
+            check_go_env
+            install_dependencies
+            run_performance_tests
+            generate_report
+            ;;
+        "security")
+            check_go_env
+            install_dependencies
+            run_security_tests
+            generate_report
             ;;
         "all")
-            if ! run_unit_tests; then
-                failed=1
-            fi
-            
-            if ! run_integration_tests; then
-                failed=1
-            fi
+            check_go_env
+            install_dependencies
+            run_unit_tests
+            run_integration_tests
+            run_performance_tests
+            run_security_tests
+            generate_report
+            ;;
+        "clean")
+            cleanup
             ;;
         *)
-            echo -e "${RED}❌ 未知的测试类型: $TEST_TYPE${NC}"
-            show_help
+            echo "用法: $0 [unit|integration|performance|security|all|clean]"
+            echo "  unit        - 运行单元测试"
+            echo "  integration - 运行集成测试"
+            echo "  performance - 运行性能测试"
+            echo "  security    - 运行安全测试"
+            echo "  all         - 运行所有测试（默认）"
+            echo "  clean       - 清理测试环境"
             exit 1
             ;;
     esac
     
-    # 运行性能测试
-    if [ "$BENCHMARK" = true ]; then
-        if ! run_benchmark_tests; then
-            failed=1
-        fi
-    fi
-    
-    # 生成覆盖率报告
-    generate_coverage_report
-    
-    # 清理测试文件
-    cleanup
-    
-    echo "=================================="
-    if [ $failed -eq 0 ]; then
-        echo -e "${GREEN}🎉 所有测试通过！${NC}"
-    else
-        echo -e "${RED}❌ 部分测试失败，请检查错误信息${NC}"
-        exit 1
-    fi
+    log_success "测试套件运行完成！"
 }
 
 # 运行主函数

@@ -65,14 +65,14 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	// 4. 日志中间件（请求日志、SQL日志）
 	// 5. 业务中间件（认证、权限等）
 	engine.Use(
-		recoveryMiddleware.Handle(),                    // 错误恢复中间件（最先执行）
+		recoveryMiddleware.Handle(),                    // 错误恢复中间件（最先执行，只处理panic）
 		corsMiddleware.Handle(),                        // CORS中间件
 		timeoutMiddleware.Handle(30*time.Second),       // 请求超时中间件
 		rateLimitMiddleware.Handle(100, 1*time.Minute), // 全局速率限制
 		performanceMiddleware.Handle(),                 // 性能监控中间件
 		requestLogMiddleware.RequestLog(),              // 自定义请求日志
 		sqlLogMiddleware.Handle(),                      // SQL日志中间件
-		errorHandlingMiddleware.Handle(),               // 错误处理中间件（最后执行）
+		errorHandlingMiddleware.Handle(),               // 错误处理中间件（处理业务错误，不处理panic）
 	)
 
 	// API版本分组

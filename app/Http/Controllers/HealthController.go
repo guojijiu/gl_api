@@ -23,6 +23,8 @@ type HealthController struct {
 	redisClient     *redis.Client
 	storageManager  *Storage.StorageManager
 	securityService *Services.SecurityService
+	startTime       time.Time
+	customChecks    map[string]func() error
 }
 
 // NewHealthController 创建健康检查控制器
@@ -34,6 +36,8 @@ func NewHealthController() *HealthController {
 	return &HealthController{
 		db:             Database.GetDB(),
 		storageManager: Storage.GetStorageManager(),
+		startTime:      time.Now(),
+		customChecks:   make(map[string]func() error),
 		// securityService 将在需要时通过依赖注入获取
 	}
 }
@@ -54,6 +58,8 @@ type ServiceHealth struct {
 	ResponseTime time.Duration `json:"response_time"`
 	Message      string        `json:"message,omitempty"`
 	Details      interface{}   `json:"details,omitempty"`
+	Duration     string        `json:"duration,omitempty"`
+	Timestamp    time.Time     `json:"timestamp,omitempty"`
 }
 
 // SystemMetrics 系统指标
@@ -102,6 +108,12 @@ func (hc *HealthController) Health(c *gin.Context) {
 	// 检查服务状态
 	services := hc.checkServices()
 
+	// 检查自定义服务
+	customServices := hc.checkCustomServices()
+	for name, service := range customServices {
+		services[name] = service
+	}
+
 	// 确定整体状态
 	overallStatus := "healthy"
 	for _, service := range services {
@@ -118,7 +130,7 @@ func (hc *HealthController) Health(c *gin.Context) {
 		Status:    overallStatus,
 		Timestamp: time.Now(),
 		Version:   "1.0.0", // 可以从构建信息中获取
-		Uptime:    hc.getUptime(),
+		Uptime:    hc.GetUptimeString(),
 		Services:  services,
 		Metrics:   metrics,
 	}
@@ -510,4 +522,72 @@ func (hc *HealthController) checkStorage() bool {
 
 	err := hc.storageManager.CheckHealth()
 	return err == nil
+}
+
+// AddCustomCheck 添加自定义健康检查
+func (hc *HealthController) AddCustomCheck(name string, checkFunc func() error) {
+	hc.customChecks[name] = checkFunc
+}
+
+// RemoveCustomCheck 移除自定义健康检查
+func (hc *HealthController) RemoveCustomCheck(name string) {
+	delete(hc.customChecks, name)
+}
+
+// GetCustomChecks 获取所有自定义健康检查
+func (hc *HealthController) GetCustomChecks() map[string]func() error {
+	return hc.customChecks
+}
+
+// checkCustomServices 检查自定义服务
+func (hc *HealthController) checkCustomServices() map[string]ServiceHealth {
+	results := make(map[string]ServiceHealth)
+
+	for name, checkFunc := range hc.customChecks {
+		start := time.Now()
+		err := checkFunc()
+		duration := time.Since(start)
+
+		status := "healthy"
+		message := "OK"
+		if err != nil {
+			status = "unhealthy"
+			message = err.Error()
+		}
+
+		results[name] = ServiceHealth{
+			Status:       status,
+			Message:      message,
+			Duration:     duration.String(),
+			Timestamp:    time.Now(),
+			ResponseTime: duration,
+		}
+	}
+
+	return results
+}
+
+// GetUptime 获取系统运行时间
+func (hc *HealthController) GetUptime() time.Duration {
+	return time.Since(hc.startTime)
+}
+
+// GetUptimeString 获取系统运行时间字符串
+func (hc *HealthController) GetUptimeString() string {
+	uptime := hc.GetUptime()
+
+	days := int(uptime.Hours() / 24)
+	hours := int(uptime.Hours()) % 24
+	minutes := int(uptime.Minutes()) % 60
+	seconds := int(uptime.Seconds()) % 60
+
+	if days > 0 {
+		return fmt.Sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds)
+	} else if hours > 0 {
+		return fmt.Sprintf("%dh %dm %ds", hours, minutes, seconds)
+	} else if minutes > 0 {
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	} else {
+		return fmt.Sprintf("%ds", seconds)
+	}
 }

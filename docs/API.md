@@ -799,9 +799,77 @@ GET /ws/users/online
 GET /ws/stats
 ```
 
+#### 发送消息
+```http
+POST /ws/messages
+Content-Type: application/json
+Authorization: Bearer <token>
+
+{
+  "type": "room_message|private_message|broadcast",
+  "content": "消息内容",
+  "room_id": "房间ID（可选）",
+  "to": "接收者（私聊时必需）"
+}
+```
+
+### 🔧 配置管理
+
+#### 获取配置信息
+```http
+GET /api/v1/config
+Authorization: Bearer <token>
+```
+
+#### 更新配置
+```http
+PUT /api/v1/config
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "key": "配置键",
+  "value": "配置值"
+}
+```
+
+#### 重载配置
+```http
+POST /api/v1/config/reload
+Authorization: Bearer <token>
+```
+
+### 🔄 熔断器管理
+
+#### 获取熔断器状态
+```http
+GET /api/v1/circuit-breaker/status
+Authorization: Bearer <token>
+```
+
+#### 重置熔断器
+```http
+POST /api/v1/circuit-breaker/reset
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "service": "服务名称"
+}
+```
+
 ## 📝 更新日志
 
-### v1.2.0 (最新)
+### v1.3.0 (最新)
+- 新增配置热重载功能
+- 新增熔断器中间件
+- 增强健康检查系统
+- 优化监控集成服务
+- 完善API文档系统
+- 改进错误处理机制
+- 新增性能优化工具
+
+### v1.2.0
 - 新增性能监控系统
 - 新增安全防护系统
 - 新增查询优化系统

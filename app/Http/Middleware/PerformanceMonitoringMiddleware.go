@@ -198,6 +198,10 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 
 // recordStatusCodeMetrics 记录状态码指标
 func (m *PerformanceMonitoringMiddleware) recordStatusCodeMetrics(statusCode int, labels map[string]string) {
+	if m.monitoringService == nil {
+		return
+	}
+
 	statusLabels := make(map[string]string)
 	for k, v := range labels {
 		statusLabels[k] = v
@@ -223,6 +227,10 @@ func (m *PerformanceMonitoringMiddleware) recordStatusCodeMetrics(statusCode int
 
 // recordPathSpecificMetrics 记录路径特定指标
 func (m *PerformanceMonitoringMiddleware) recordPathSpecificMetrics(path string, duration time.Duration, labels map[string]string) {
+	if m.monitoringService == nil {
+		return
+	}
+
 	pathLabels := make(map[string]string)
 	for k, v := range labels {
 		pathLabels[k] = v

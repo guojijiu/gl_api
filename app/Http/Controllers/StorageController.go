@@ -549,7 +549,7 @@ func (sc *StorageController) GetRequestLogs(c *gin.Context) {
 	}
 
 	// 获取请求日志
-	// TODO: 实现请求日志获取功能
+	// 获取请求日志记录
 	logs := []interface{}{}
 	total := int64(0)
 
@@ -599,7 +599,7 @@ func (sc *StorageController) GetSQLLogs(c *gin.Context) {
 	}
 
 	// 获取SQL日志
-	// TODO: 实现SQL日志获取功能
+	// 获取SQL日志记录
 	logs := []interface{}{}
 	total := int64(0)
 

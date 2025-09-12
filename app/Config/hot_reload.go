@@ -13,316 +13,288 @@ import (
 	"github.com/spf13/viper"
 )
 
-// ConfigReloader 配置热重载器
-type ConfigReloader struct {
-	watcher    *fsnotify.Watcher
-	configPath string
-	callbacks  []ConfigChangeCallback
-	mu         sync.RWMutex
-	ctx        context.Context
-	cancel     context.CancelFunc
+// HotReloadManager 配置热重载管理器
+type HotReloadManager struct {
+	configPath      string
+	watcher         *fsnotify.Watcher
+	reloadCallbacks []func(*Config)
+	mutex           sync.RWMutex
+	ctx             context.Context
+	cancel          context.CancelFunc
+	isWatching      bool
 }
 
-// ConfigChangeCallback 配置变更回调函数类型
-type ConfigChangeCallback func(config *Config, changeType ConfigChangeType) error
-
-// ConfigChangeType 配置变更类型
-type ConfigChangeType int
-
-const (
-	ConfigChangeReload ConfigChangeType = iota
-	ConfigChangeError
-	ConfigChangeFileDeleted
-	ConfigChangeFileCreated
-)
-
-// NewConfigReloader 创建配置热重载器
-func NewConfigReloader(configPath string) (*ConfigReloader, error) {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create file watcher: %v", err)
-	}
-
+// NewHotReloadManager 创建配置热重载管理器
+func NewHotReloadManager(configPath string) *HotReloadManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	reloader := &ConfigReloader{
-		watcher:    watcher,
-		configPath: configPath,
-		callbacks:  make([]ConfigChangeCallback, 0),
-		ctx:        ctx,
-		cancel:     cancel,
+	return &HotReloadManager{
+		configPath:      configPath,
+		reloadCallbacks: make([]func(*Config), 0),
+		ctx:             ctx,
+		cancel:          cancel,
+		isWatching:      false,
 	}
-
-	return reloader, nil
 }
 
-// AddCallback 添加配置变更回调
-func (cr *ConfigReloader) AddCallback(callback ConfigChangeCallback) {
-	cr.mu.Lock()
-	defer cr.mu.Unlock()
-	cr.callbacks = append(cr.callbacks, callback)
-}
+// StartWatching 开始监控配置文件变化
+func (hrm *HotReloadManager) StartWatching() error {
+	hrm.mutex.Lock()
+	defer hrm.mutex.Unlock()
 
-// Start 开始监听配置变更
-func (cr *ConfigReloader) Start() error {
-	// 添加配置文件监听
-	if err := cr.watcher.Add(cr.configPath); err != nil {
-		return fmt.Errorf("failed to add config file to watcher: %v", err)
+	if hrm.isWatching {
+		return fmt.Errorf("配置热重载已经在运行")
 	}
 
-	// 添加配置文件所在目录监听
-	configDir := filepath.Dir(cr.configPath)
-	if err := cr.watcher.Add(configDir); err != nil {
-		return fmt.Errorf("failed to add config directory to watcher: %v", err)
+	// 创建文件监控器
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("创建文件监控器失败: %v", err)
+	}
+	hrm.watcher = watcher
+
+	// 监控配置文件目录
+	configDir := filepath.Dir(hrm.configPath)
+	if err := watcher.Add(configDir); err != nil {
+		watcher.Close()
+		return fmt.Errorf("添加监控目录失败: %v", err)
 	}
 
-	// 启动监听协程
-	go cr.watch()
+	// 监控配置文件
+	if err := watcher.Add(hrm.configPath); err != nil {
+		watcher.Close()
+		return fmt.Errorf("添加监控文件失败: %v", err)
+	}
 
-	log.Printf("配置热重载已启动，监听路径: %s", cr.configPath)
+	hrm.isWatching = true
+
+	// 启动监控goroutine
+	go hrm.watchFiles()
+
+	log.Println("配置热重载已启动")
 	return nil
 }
 
-// Stop 停止监听
-func (cr *ConfigReloader) Stop() {
-	cr.cancel()
-	if cr.watcher != nil {
-		cr.watcher.Close()
+// StopWatching 停止监控配置文件变化
+func (hrm *HotReloadManager) StopWatching() error {
+	hrm.mutex.Lock()
+	defer hrm.mutex.Unlock()
+
+	if !hrm.isWatching {
+		return fmt.Errorf("配置热重载未在运行")
 	}
+
+	// 取消上下文
+	hrm.cancel()
+
+	// 关闭文件监控器
+	if hrm.watcher != nil {
+		if err := hrm.watcher.Close(); err != nil {
+			return fmt.Errorf("关闭文件监控器失败: %v", err)
+		}
+	}
+
+	hrm.isWatching = false
 	log.Println("配置热重载已停止")
+	return nil
 }
 
-// watch 监听文件变更
-func (cr *ConfigReloader) watch() {
-	defer cr.watcher.Close()
+// watchFiles 监控文件变化
+func (hrm *HotReloadManager) watchFiles() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case event, ok := <-cr.watcher.Events:
+		case event, ok := <-hrm.watcher.Events:
 			if !ok {
 				return
 			}
-			cr.handleEvent(event)
 
-		case err, ok := <-cr.watcher.Errors:
+			// 检查是否是配置文件变化
+			if hrm.isConfigFile(event.Name) {
+				hrm.handleConfigChange(event)
+			}
+
+		case err, ok := <-hrm.watcher.Errors:
 			if !ok {
 				return
 			}
-			cr.handleError(err)
+			log.Printf("配置文件监控错误: %v", err)
 
-		case <-cr.ctx.Done():
+		case <-hrm.ctx.Done():
 			return
+
+		case <-ticker.C:
+			// 定期检查配置文件是否存在
+			if _, err := os.Stat(hrm.configPath); os.IsNotExist(err) {
+				log.Printf("配置文件不存在: %s", hrm.configPath)
+			}
 		}
 	}
 }
 
-// handleEvent 处理文件事件
-func (cr *ConfigReloader) handleEvent(event fsnotify.Event) {
-	// 只处理配置文件相关的事件
-	if event.Name != cr.configPath {
+// isConfigFile 检查是否是配置文件
+func (hrm *HotReloadManager) isConfigFile(filename string) bool {
+	ext := filepath.Ext(filename)
+	return ext == ".yaml" || ext == ".yml" || ext == ".json" || ext == ".toml" || ext == ".env"
+}
+
+// handleConfigChange 处理配置文件变化
+func (hrm *HotReloadManager) handleConfigChange(event fsnotify.Event) {
+	// 防抖处理，避免频繁重载
+	time.Sleep(100 * time.Millisecond)
+
+	// 检查文件是否仍然存在
+	if _, err := os.Stat(event.Name); os.IsNotExist(err) {
 		return
 	}
 
-	log.Printf("检测到配置文件变更: %s, 事件: %s", event.Name, event.Op)
+	log.Printf("检测到配置文件变化: %s", event.Name)
 
-	switch {
-	case event.Op&fsnotify.Write == fsnotify.Write:
-		cr.reloadConfig(ConfigChangeReload)
-	case event.Op&fsnotify.Remove == fsnotify.Remove:
-		cr.reloadConfig(ConfigChangeFileDeleted)
-	case event.Op&fsnotify.Create == fsnotify.Create:
-		cr.reloadConfig(ConfigChangeFileCreated)
+	// 重新加载配置
+	if err := hrm.reloadConfig(); err != nil {
+		log.Printf("配置重载失败: %v", err)
+		return
 	}
-}
 
-// handleError 处理监听错误
-func (cr *ConfigReloader) handleError(err error) {
-	log.Printf("配置监听错误: %v", err)
-	cr.notifyCallbacks(nil, ConfigChangeError)
+	log.Println("配置重载成功")
 }
 
 // reloadConfig 重新加载配置
-func (cr *ConfigReloader) reloadConfig(changeType ConfigChangeType) {
-	// 检查文件是否存在
-	if _, err := os.Stat(cr.configPath); os.IsNotExist(err) {
-		log.Printf("配置文件不存在: %s", cr.configPath)
-		cr.notifyCallbacks(nil, ConfigChangeFileDeleted)
-		return
-	}
-
-	// 重新加载配置
-	newConfig, err := cr.loadConfig()
-	if err != nil {
-		log.Printf("配置重新加载失败: %v", err)
-		cr.notifyCallbacks(nil, ConfigChangeError)
-		return
-	}
-
-	log.Printf("配置重新加载成功")
-	cr.notifyCallbacks(newConfig, changeType)
-}
-
-// loadConfig 加载配置
-func (cr *ConfigReloader) loadConfig() (*Config, error) {
+func (hrm *HotReloadManager) reloadConfig() error {
 	// 重新读取配置文件
-	viper.Reset()
-
-	// 设置配置文件
-	viper.SetConfigFile(cr.configPath)
-
-	// 读取配置文件
+	viper.SetConfigFile(hrm.configPath)
 	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config file: %v", err)
+		return fmt.Errorf("读取配置文件失败: %v", err)
 	}
 
-	// 创建新的配置实例
-	newConfig := &Config{}
-
-	// 设置默认值
-	newConfig.SetDefaults()
-
-	// 绑定环境变量
-	newConfig.BindEnvs()
-
-	// 解析配置
-	if err := viper.Unmarshal(newConfig); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
+	// 重新解析配置
+	var newConfig Config
+	if err := viper.Unmarshal(&newConfig); err != nil {
+		return fmt.Errorf("解析配置失败: %v", err)
 	}
 
-	// 验证配置
-	if err := ValidateConfig(); err != nil {
-		return nil, fmt.Errorf("config validation failed: %v", err)
-	}
-
-	return newConfig, nil
-}
-
-// notifyCallbacks 通知所有回调函数
-func (cr *ConfigReloader) notifyCallbacks(config *Config, changeType ConfigChangeType) {
-	cr.mu.RLock()
-	callbacks := make([]ConfigChangeCallback, len(cr.callbacks))
-	copy(callbacks, cr.callbacks)
-	cr.mu.RUnlock()
-
-	for _, callback := range callbacks {
-		go func(cb ConfigChangeCallback) {
-			if err := cb(config, changeType); err != nil {
-				log.Printf("配置变更回调执行失败: %v", err)
-			}
-		}(callback)
-	}
-}
-
-// ConfigManager 配置管理器
-type ConfigManager struct {
-	reloader   *ConfigReloader
-	config     *Config
-	mu         sync.RWMutex
-	lastUpdate time.Time
-}
-
-// NewConfigManager 创建配置管理器
-func NewConfigManager(configPath string) (*ConfigManager, error) {
-	reloader, err := NewConfigReloader(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create config reloader: %v", err)
-	}
-
-	manager := &ConfigManager{
-		reloader: reloader,
-	}
-
-	// 添加默认回调
-	manager.reloader.AddCallback(manager.onConfigChange)
-
-	return manager, nil
-}
-
-// Start 启动配置管理器
-func (cm *ConfigManager) Start() error {
-	// 初始加载配置
-	config, err := cm.reloader.loadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load initial config: %v", err)
-	}
-
-	cm.mu.Lock()
-	cm.config = config
-	cm.lastUpdate = time.Now()
-	cm.mu.Unlock()
-
-	// 启动热重载
-	return cm.reloader.Start()
-}
-
-// Stop 停止配置管理器
-func (cm *ConfigManager) Stop() {
-	cm.reloader.Stop()
-}
-
-// GetConfig 获取当前配置
-func (cm *ConfigManager) GetConfig() *Config {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	return cm.config
-}
-
-// GetLastUpdate 获取最后更新时间
-func (cm *ConfigManager) GetLastUpdate() time.Time {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
-	return cm.lastUpdate
-}
-
-// AddCallback 添加配置变更回调
-func (cm *ConfigManager) AddCallback(callback ConfigChangeCallback) {
-	cm.reloader.AddCallback(callback)
-}
-
-// onConfigChange 配置变更处理
-func (cm *ConfigManager) onConfigChange(config *Config, changeType ConfigChangeType) error {
-	if config == nil {
-		return nil
-	}
-
-	cm.mu.Lock()
-	cm.config = config
-	cm.lastUpdate = time.Now()
-	cm.mu.Unlock()
+	// 验证配置（这里可以添加配置验证逻辑）
+	// if err := newConfig.Validate(); err != nil {
+	//     return fmt.Errorf("配置验证失败: %v", err)
+	// }
 
 	// 更新全局配置
-	globalConfig = config
+	globalConfig = &newConfig
 
-	log.Printf("配置已更新，变更类型: %d", changeType)
+	// 执行重载回调
+	hrm.mutex.RLock()
+	callbacks := make([]func(*Config), len(hrm.reloadCallbacks))
+	copy(callbacks, hrm.reloadCallbacks)
+	hrm.mutex.RUnlock()
+
+	for _, callback := range callbacks {
+		go func(cb func(*Config)) {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("配置重载回调执行失败: %v", r)
+				}
+			}()
+			cb(&newConfig)
+		}(callback)
+	}
+
 	return nil
 }
 
-// 全局配置管理器
-var globalConfigManager *ConfigManager
+// AddReloadCallback 添加配置重载回调
+func (hrm *HotReloadManager) AddReloadCallback(callback func(*Config)) {
+	hrm.mutex.Lock()
+	defer hrm.mutex.Unlock()
 
-// InitializeConfigManager 初始化全局配置管理器
-func InitializeConfigManager(configPath string) error {
-	manager, err := NewConfigManager(configPath)
-	if err != nil {
-		return fmt.Errorf("failed to create config manager: %v", err)
+	hrm.reloadCallbacks = append(hrm.reloadCallbacks, callback)
+}
+
+// RemoveReloadCallback 移除配置重载回调
+func (hrm *HotReloadManager) RemoveReloadCallback(callback func(*Config)) {
+	hrm.mutex.Lock()
+	defer hrm.mutex.Unlock()
+
+	for i, cb := range hrm.reloadCallbacks {
+		if &cb == &callback {
+			hrm.reloadCallbacks = append(hrm.reloadCallbacks[:i], hrm.reloadCallbacks[i+1:]...)
+			break
+		}
+	}
+}
+
+// IsWatching 检查是否正在监控
+func (hrm *HotReloadManager) IsWatching() bool {
+	hrm.mutex.RLock()
+	defer hrm.mutex.RUnlock()
+	return hrm.isWatching
+}
+
+// GetConfigPath 获取配置文件路径
+func (hrm *HotReloadManager) GetConfigPath() string {
+	return hrm.configPath
+}
+
+// SetConfigPath 设置配置文件路径
+func (hrm *HotReloadManager) SetConfigPath(path string) error {
+	hrm.mutex.Lock()
+	defer hrm.mutex.Unlock()
+
+	if hrm.isWatching {
+		return fmt.Errorf("配置热重载正在运行，无法更改配置文件路径")
 	}
 
-	if err := manager.Start(); err != nil {
-		return fmt.Errorf("failed to start config manager: %v", err)
-	}
-
-	globalConfigManager = manager
+	hrm.configPath = path
 	return nil
 }
 
-// GetConfigManager 获取全局配置管理器
-func GetConfigManager() *ConfigManager {
-	return globalConfigManager
+// GetReloadCallbacksCount 获取重载回调数量
+func (hrm *HotReloadManager) GetReloadCallbacksCount() int {
+	hrm.mutex.RLock()
+	defer hrm.mutex.RUnlock()
+	return len(hrm.reloadCallbacks)
 }
 
-// StopConfigManager 停止全局配置管理器
-func StopConfigManager() {
-	if globalConfigManager != nil {
-		globalConfigManager.Stop()
+// 全局热重载管理器
+var globalHotReloadManager *HotReloadManager
+
+// InitHotReload 初始化配置热重载
+func InitHotReload(configPath string) error {
+	if globalHotReloadManager != nil {
+		return fmt.Errorf("配置热重载已经初始化")
+	}
+
+	globalHotReloadManager = NewHotReloadManager(configPath)
+	return globalHotReloadManager.StartWatching()
+}
+
+// StopHotReload 停止配置热重载
+func StopHotReload() error {
+	if globalHotReloadManager == nil {
+		return fmt.Errorf("配置热重载未初始化")
+	}
+
+	err := globalHotReloadManager.StopWatching()
+	globalHotReloadManager = nil
+	return err
+}
+
+// GetHotReloadManager 获取全局热重载管理器
+func GetHotReloadManager() *HotReloadManager {
+	return globalHotReloadManager
+}
+
+// AddGlobalReloadCallback 添加全局配置重载回调
+func AddGlobalReloadCallback(callback func(*Config)) {
+	if globalHotReloadManager != nil {
+		globalHotReloadManager.AddReloadCallback(callback)
+	}
+}
+
+// RemoveGlobalReloadCallback 移除全局配置重载回调
+func RemoveGlobalReloadCallback(callback func(*Config)) {
+	if globalHotReloadManager != nil {
+		globalHotReloadManager.RemoveReloadCallback(callback)
 	}
 }

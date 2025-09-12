@@ -329,7 +329,8 @@ func initDB() {
 		// 根据错误类型决定是否重试
 		if !shouldRetry(errorType, attempt, maxRetries) {
 			log.Printf("错误类型 %s 不支持重试，停止重试", errorType)
-			break
+			// 对于不支持重试的错误，直接返回错误而不是继续循环
+			return
 		}
 
 		if attempt < maxRetries {

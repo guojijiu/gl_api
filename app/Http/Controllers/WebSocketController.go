@@ -59,22 +59,22 @@ func (c *WebSocketController) Connect(ctx *gin.Context) {
 		c.Error(ctx, http.StatusUnauthorized, "需要登录")
 		return
 	}
-	
+
 	username := ctx.GetString("username")
-	
+
 	// 获取房间ID
 	roomID := ctx.Query("room_id")
 	if roomID == "" {
 		roomID = "general" // 默认房间
 	}
-	
+
 	// 建立WebSocket连接
 	c.webSocketService.HandleWebSocket(ctx.Writer, ctx.Request)
-	
+
 	// 记录连接日志
 	c.logWebSocketAction("connect", uint(userID.(uint)), username, map[string]interface{}{
-		"room_id": roomID,
-		"ip":      ctx.ClientIP(),
+		"room_id":    roomID,
+		"ip":         ctx.ClientIP(),
 		"user_agent": ctx.GetHeader("User-Agent"),
 	})
 }
@@ -92,7 +92,7 @@ func (c *WebSocketController) Connect(ctx *gin.Context) {
 // @Router /ws/rooms [get]
 func (c *WebSocketController) GetRooms(ctx *gin.Context) {
 	rooms := c.webSocketService.GetRooms()
-	
+
 	// 转换为响应格式
 	roomList := make([]map[string]interface{}, 0, len(rooms))
 	for _, room := range rooms {
@@ -105,7 +105,7 @@ func (c *WebSocketController) GetRooms(ctx *gin.Context) {
 			"created_at":    room.CreatedAt,
 		})
 	}
-	
+
 	c.Success(ctx, gin.H{
 		"rooms": roomList,
 		"total": len(roomList),
@@ -130,25 +130,25 @@ func (c *WebSocketController) CreateRoom(ctx *gin.Context) {
 		c.Error(ctx, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	
+
 	// 验证房间名称
 	if req.Name == "" {
 		c.Error(ctx, http.StatusBadRequest, "房间名称不能为空")
 		return
 	}
-	
+
 	// 创建房间
 	room := c.webSocketService.CreateRoom(req.ID, req.Name, req.Description)
-	
+
 	// 记录操作日志
 	userID, _ := ctx.Get("user_id")
 	username := ctx.GetString("username")
 	c.logWebSocketAction("create_room", uint(userID.(uint)), username, map[string]interface{}{
-		"room_id":      room.ID,
-		"room_name":    room.Name,
-		"description":  room.Description,
+		"room_id":     room.ID,
+		"room_name":   room.Name,
+		"description": room.Description,
 	})
-	
+
 	c.Success(ctx, gin.H{
 		"room": map[string]interface{}{
 			"id":            room.ID,
@@ -179,21 +179,21 @@ func (c *WebSocketController) JoinRoom(ctx *gin.Context) {
 		c.Error(ctx, http.StatusBadRequest, "房间ID不能为空")
 		return
 	}
-	
+
 	// 检查房间是否存在
 	room := c.webSocketService.GetRoom(roomID)
 	if room == nil {
 		c.Error(ctx, http.StatusNotFound, "房间不存在")
 		return
 	}
-	
+
 	// 记录操作日志
 	userID, _ := ctx.Get("user_id")
 	username := ctx.GetString("username")
 	c.logWebSocketAction("join_room", uint(userID.(uint)), username, map[string]interface{}{
 		"room_id": roomID,
 	})
-	
+
 	c.Success(ctx, gin.H{
 		"message": "成功加入房间",
 		"room": map[string]interface{}{
@@ -224,14 +224,14 @@ func (c *WebSocketController) LeaveRoom(ctx *gin.Context) {
 		c.Error(ctx, http.StatusBadRequest, "房间ID不能为空")
 		return
 	}
-	
+
 	// 记录操作日志
 	userID, _ := ctx.Get("user_id")
 	username := ctx.GetString("username")
 	c.logWebSocketAction("leave_room", uint(userID.(uint)), username, map[string]interface{}{
 		"room_id": roomID,
 	})
-	
+
 	c.Success(ctx, gin.H{
 		"message": "成功离开房间",
 		"room_id": roomID,
@@ -256,13 +256,13 @@ func (c *WebSocketController) SendMessage(ctx *gin.Context) {
 		c.Error(ctx, http.StatusBadRequest, "请求参数错误: "+err.Error())
 		return
 	}
-	
+
 	// 验证消息内容
 	if req.Content == "" {
 		c.Error(ctx, http.StatusBadRequest, "消息内容不能为空")
 		return
 	}
-	
+
 	// 根据消息类型处理
 	switch req.Type {
 	case "room_message":
@@ -283,7 +283,7 @@ func (c *WebSocketController) SendMessage(ctx *gin.Context) {
 		c.Error(ctx, http.StatusBadRequest, "不支持的消息类型")
 		return
 	}
-	
+
 	// 记录操作日志
 	userID, _ := ctx.Get("user_id")
 	username := ctx.GetString("username")
@@ -293,9 +293,9 @@ func (c *WebSocketController) SendMessage(ctx *gin.Context) {
 		"to":           req.To,
 		"content":      req.Content,
 	})
-	
+
 	c.Success(ctx, gin.H{
-		"message": "消息发送成功",
+		"message":    "消息发送成功",
 		"message_id": time.Now().UnixNano(),
 	}, "消息发送成功")
 }
@@ -313,7 +313,7 @@ func (c *WebSocketController) SendMessage(ctx *gin.Context) {
 // @Router /ws/users/online [get]
 func (c *WebSocketController) GetOnlineUsers(ctx *gin.Context) {
 	count := c.webSocketService.GetOnlineUsers()
-	
+
 	c.Success(ctx, gin.H{
 		"online_users": count,
 		"timestamp":    time.Now(),
@@ -334,11 +334,11 @@ func (c *WebSocketController) GetOnlineUsers(ctx *gin.Context) {
 func (c *WebSocketController) GetStats(ctx *gin.Context) {
 	rooms := c.webSocketService.GetRooms()
 	onlineUsers := c.webSocketService.GetOnlineUsers()
-	
+
 	// 计算房间统计
 	roomStats := make(map[string]interface{})
 	totalMessages := int64(0)
-	
+
 	for _, room := range rooms {
 		roomStats[room.ID] = map[string]interface{}{
 			"name":          room.Name,
@@ -347,13 +347,13 @@ func (c *WebSocketController) GetStats(ctx *gin.Context) {
 		}
 		totalMessages += room.MessageCount
 	}
-	
+
 	c.Success(ctx, gin.H{
-		"total_rooms":     len(rooms),
-		"online_users":    onlineUsers,
-		"total_messages":  totalMessages,
-		"rooms":           roomStats,
-		"timestamp":       time.Now(),
+		"total_rooms":    len(rooms),
+		"online_users":   onlineUsers,
+		"total_messages": totalMessages,
+		"rooms":          roomStats,
+		"timestamp":      time.Now(),
 	}, "统计信息获取成功")
 }
 
@@ -381,5 +381,5 @@ type SendMessageRequest struct {
 func (c *WebSocketController) logWebSocketAction(action string, userID uint, username string, fields map[string]interface{}) {
 	// 这里应该调用审计服务记录日志
 	// 暂时只打印日志
-	// TODO: 实现日志记录功能
+	// 记录WebSocket操作日志
 }
