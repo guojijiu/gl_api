@@ -29,7 +29,7 @@ var Router *bootstrap.Router
 type TestSuite struct {
 	suite.Suite
 	storageManager *Storage.StorageManager
-	tokenHelper    *TokenHelper
+	TokenHelper    *TokenHelper
 	ctx            context.Context
 	cancel         context.CancelFunc
 }
@@ -50,7 +50,10 @@ func Init() {
 
 	// 初始化测试存储管理器
 	storagePath := filepath.Join(".", "storage", "test")
-	storageManager := Storage.NewStorageManager(storagePath)
+	storageConfig := &Config.StorageConfig{
+		BasePath: storagePath,
+	}
+	storageManager := Storage.NewStorageManager(storageConfig)
 
 	// 初始化测试数据库
 	Database.InitDBWithLogger(storageManager)
@@ -78,13 +81,19 @@ func Init() {
 func (ts *TestSuite) SetupSuite() {
 	// 设置测试环境变量
 	os.Setenv("SERVER_MODE", "test")
-	os.Setenv("DB_DRIVER", "sqlite")
-	os.Setenv("DB_DATABASE", ":memory:")
+	os.Setenv("DATABASE_DRIVER", "sqlite")
+	os.Setenv("DATABASE_NAME", ":memory:")
 	os.Setenv("JWT_SECRET", "test-jwt-secret-key-for-testing-only-32-chars")
+
+	// 加载配置
+	Config.LoadConfig()
 
 	// 初始化存储管理器
 	storagePath := "./storage/test"
-	ts.storageManager = Storage.NewStorageManager(storagePath)
+	storageConfig := &Config.StorageConfig{
+		BasePath: storagePath,
+	}
+	ts.storageManager = Storage.NewStorageManager(storageConfig)
 
 	// 初始化数据库
 	Database.InitDBWithLogger(ts.storageManager)
@@ -93,7 +102,7 @@ func (ts *TestSuite) SetupSuite() {
 	Database.AutoMigrate()
 
 	// 初始化TokenHelper
-	ts.tokenHelper = NewTokenHelper()
+	ts.TokenHelper = NewTokenHelper()
 
 	// 创建上下文
 	ts.ctx, ts.cancel = context.WithTimeout(context.Background(), 30*time.Second)
@@ -109,8 +118,8 @@ func (ts *TestSuite) SetupSuite() {
 // 4. 释放资源
 func (ts *TestSuite) TearDownSuite() {
 	// 清理测试用户
-	if ts.tokenHelper != nil {
-		if err := ts.tokenHelper.CleanupTestUsers(); err != nil {
+	if ts.TokenHelper != nil {
+		if err := ts.TokenHelper.CleanupTestUsers(); err != nil {
 			log.Printf("清理测试用户失败: %v", err)
 		}
 	}
@@ -193,7 +202,7 @@ func (ts *TestSuite) cleanupTestFiles() {
 // 2. 生成有效的JWT token
 // 3. 返回用户信息和token
 func (ts *TestSuite) CreateTestUserWithToken(username, email, password, role string) (*UserTokenInfo, error) {
-	user, token, err := ts.tokenHelper.CreateTestUserWithToken(username, email, password, role)
+	user, token, err := ts.TokenHelper.CreateTestUserWithToken(username, email, password, role)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +215,7 @@ func (ts *TestSuite) CreateTestUserWithToken(username, email, password, role str
 
 // CreateAdminUserWithToken 创建管理员用户并返回token
 func (ts *TestSuite) CreateAdminUserWithToken() (*UserTokenInfo, error) {
-	user, token, err := ts.tokenHelper.CreateAdminUserWithToken()
+	user, token, err := ts.TokenHelper.CreateAdminUserWithToken()
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +228,7 @@ func (ts *TestSuite) CreateAdminUserWithToken() (*UserTokenInfo, error) {
 
 // CreateNormalUserWithToken 创建普通用户并返回token
 func (ts *TestSuite) CreateNormalUserWithToken() (*UserTokenInfo, error) {
-	user, token, err := ts.tokenHelper.CreateNormalUserWithToken()
+	user, token, err := ts.TokenHelper.CreateNormalUserWithToken()
 	if err != nil {
 		return nil, err
 	}
@@ -232,22 +241,22 @@ func (ts *TestSuite) CreateNormalUserWithToken() (*UserTokenInfo, error) {
 
 // GetAdminTokenHeaders 获取管理员token请求头
 func (ts *TestSuite) GetAdminTokenHeaders() (map[string]string, error) {
-	return ts.tokenHelper.GetAdminTokenHeaders()
+	return ts.TokenHelper.GetAdminTokenHeaders()
 }
 
 // GetUserTokenHeaders 获取普通用户token请求头
 func (ts *TestSuite) GetUserTokenHeaders() (map[string]string, error) {
-	return ts.tokenHelper.GetUserTokenHeaders()
+	return ts.TokenHelper.GetUserTokenHeaders()
 }
 
 // GetTestTokenHeaders 获取测试用的请求头
 func (ts *TestSuite) GetTestTokenHeaders(token string) map[string]string {
-	return ts.tokenHelper.GetTestTokenHeaders(token)
+	return ts.TokenHelper.GetTestTokenHeaders(token)
 }
 
 // ValidateToken 验证token有效性
 func (ts *TestSuite) ValidateToken(token string) error {
-	_, err := ts.tokenHelper.ValidateToken(token)
+	_, err := ts.TokenHelper.ValidateToken(token)
 	return err
 }
 
@@ -310,4 +319,26 @@ func GetTestStoragePath() string {
 // GetTestDatabase 获取测试数据库实例
 func GetTestDatabase() *gorm.DB {
 	return Database.GetDB()
+}
+
+// AssertResponseSuccess 断言响应成功
+func (ts *TestSuite) AssertResponseSuccess(response map[string]interface{}) {
+	ts.Require().NotNil(response)
+	ts.Require().Equal("success", response["status"])
+}
+
+// AssertResponseError 断言响应错误
+func (ts *TestSuite) AssertResponseError(response map[string]interface{}) {
+	ts.Require().NotNil(response)
+	ts.Require().Equal("error", response["status"])
+}
+
+// CreateTestUserWithToken 创建测试用户并返回token（包级别函数）
+func CreateTestUserWithToken(username, email, password, role string) (*UserTokenInfo, error) {
+	// 创建临时TestSuite实例
+	ts := &TestSuite{}
+	ts.SetupSuite()
+	defer ts.TearDownSuite()
+
+	return ts.CreateTestUserWithToken(username, email, password, role)
 }

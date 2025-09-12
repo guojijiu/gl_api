@@ -4,10 +4,11 @@ import (
 	"cloud-platform-api/app/Storage"
 	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"runtime/debug"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 )
 
 // ErrorHandlingMiddleware 增强的错误处理中间件
@@ -30,6 +31,14 @@ type CustomError struct {
 	Message string `json:"message"`
 	Details string `json:"details,omitempty"`
 	Stack   string `json:"stack,omitempty"`
+}
+
+// Error 实现error接口
+func (e *CustomError) Error() string {
+	if e.Details != "" {
+		return fmt.Sprintf("%s: %s - %s", e.Code, e.Message, e.Details)
+	}
+	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
 // NewErrorHandlingMiddleware 创建错误处理中间件
@@ -83,13 +92,13 @@ func (m *ErrorHandlingMiddleware) Handle() gin.HandlerFunc {
 func (m *ErrorHandlingMiddleware) handlePanic(c *gin.Context, recovered interface{}) {
 	// 记录panic日志
 	m.storageManager.LogError("应用发生panic", map[string]interface{}{
-		"error":        recovered,
-		"url":          c.Request.URL.String(),
-		"method":       c.Request.Method,
-		"client_ip":    c.ClientIP(),
-		"user_agent":   c.Request.UserAgent(),
-		"stack_trace":  string(debug.Stack()),
-		"user_id":      c.GetString("user_id"),
+		"error":       recovered,
+		"url":         c.Request.URL.String(),
+		"method":      c.Request.Method,
+		"client_ip":   c.ClientIP(),
+		"user_agent":  c.Request.UserAgent(),
+		"stack_trace": string(debug.Stack()),
+		"user_id":     c.GetString("user_id"),
 	})
 
 	// 返回错误响应
@@ -172,75 +181,75 @@ func (m *ErrorHandlingMiddleware) classifyError(err error) (string, int, string)
 
 // 错误类型检查函数
 func isValidationError(err error) bool {
-	return err != nil && (contains(err.Error(), "validation") || 
-		contains(err.Error(), "invalid") || 
+	return err != nil && (contains(err.Error(), "validation") ||
+		contains(err.Error(), "invalid") ||
 		contains(err.Error(), "required") ||
 		contains(err.Error(), "binding"))
 }
 
 func isNotFoundError(err error) bool {
-	return err != nil && (contains(err.Error(), "not found") || 
+	return err != nil && (contains(err.Error(), "not found") ||
 		contains(err.Error(), "record not found") ||
 		contains(err.Error(), "不存在"))
 }
 
 func isUnauthorizedError(err error) bool {
-	return err != nil && (contains(err.Error(), "unauthorized") || 
+	return err != nil && (contains(err.Error(), "unauthorized") ||
 		contains(err.Error(), "invalid token") ||
 		contains(err.Error(), "未授权"))
 }
 
 func isForbiddenError(err error) bool {
-	return err != nil && (contains(err.Error(), "forbidden") || 
+	return err != nil && (contains(err.Error(), "forbidden") ||
 		contains(err.Error(), "permission denied") ||
 		contains(err.Error(), "禁止"))
 }
 
 func isConflictError(err error) bool {
-	return err != nil && (contains(err.Error(), "already exists") || 
+	return err != nil && (contains(err.Error(), "already exists") ||
 		contains(err.Error(), "duplicate") ||
 		contains(err.Error(), "冲突"))
 }
 
 func isRateLimitError(err error) bool {
-	return err != nil && (contains(err.Error(), "rate limit") || 
+	return err != nil && (contains(err.Error(), "rate limit") ||
 		contains(err.Error(), "too many requests") ||
 		contains(err.Error(), "频率限制"))
 }
 
 func isDatabaseError(err error) bool {
-	return err != nil && (contains(err.Error(), "database") || 
+	return err != nil && (contains(err.Error(), "database") ||
 		contains(err.Error(), "sql") ||
 		contains(err.Error(), "connection") ||
 		contains(err.Error(), "transaction"))
 }
 
 func isNetworkError(err error) bool {
-	return err != nil && (contains(err.Error(), "network") || 
+	return err != nil && (contains(err.Error(), "network") ||
 		contains(err.Error(), "connection") ||
 		contains(err.Error(), "timeout") ||
 		contains(err.Error(), "unreachable"))
 }
 
 func isTimeoutError(err error) bool {
-	return err != nil && (contains(err.Error(), "timeout") || 
+	return err != nil && (contains(err.Error(), "timeout") ||
 		contains(err.Error(), "deadline") ||
 		contains(err.Error(), "超时"))
 }
 
 func isFileError(err error) bool {
-	return err != nil && (contains(err.Error(), "file") || 
+	return err != nil && (contains(err.Error(), "file") ||
 		contains(err.Error(), "upload") ||
 		contains(err.Error(), "download") ||
 		contains(err.Error(), "permission denied"))
 }
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || 
-		(len(s) > len(substr) && 
-		(s[:len(substr)] == substr || 
-		s[len(s)-len(substr):] == substr || 
-		strings.Contains(s, substr))))
+	return len(s) >= len(substr) && (s == substr ||
+		(len(s) > len(substr) &&
+			(s[:len(substr)] == substr ||
+				s[len(s)-len(substr):] == substr ||
+				strings.Contains(s, substr))))
 }
 
 // logError 记录错误日志

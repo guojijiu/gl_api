@@ -7,9 +7,12 @@
 -- 创建数据库（如果不存在）
 -- SELECT 'CREATE DATABASE cloud_platform' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'cloud_platform')\gexec
 
--- 创建扩展
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+-- 创建扩展（PostgreSQL）
+-- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+-- 注意：此脚本适用于PostgreSQL
+-- 如果使用MySQL，请使用相应的MySQL语法
 
 -- 设置时区
 SET timezone = 'UTC';

@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"bytes"
+	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Database"
 	"cloud-platform-api/app/Http/Routes"
 	"cloud-platform-api/app/Models"
@@ -67,13 +68,16 @@ func setupTestDatabase() {
 	}
 
 	// 设置全局数据库连接
-	Database.SetDB(testDB)
+	Database.DB = testDB
 }
 
 // setupTestRouter 设置测试路由
 func setupTestRouter() {
 	// 创建存储管理器
-	storageManager := Storage.NewStorageManager("./test_storage")
+	storageConfig := &Config.StorageConfig{
+		BasePath: "./test_storage",
+	}
+	storageManager := Storage.NewStorageManager(storageConfig)
 
 	// 创建路由
 	router = gin.New()
@@ -88,7 +92,7 @@ func setupTestUser() {
 		Email:    "benchmark@example.com",
 		Password: "benchmark_password",
 		Role:     "user",
-		Status:   "active",
+		Status:   1, // 1-正常状态
 	}
 
 	// 保存到数据库
@@ -97,7 +101,7 @@ func setupTestUser() {
 	}
 
 	// 生成JWT token
-	token, err := Utils.GenerateToken(testUser.ID, testUser.Username, testUser.Role)
+	token, err := Utils.GenerateToken(testUser.ID, testUser.Username, testUser.Email, testUser.Role)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to generate token: %v", err))
 	}
@@ -212,11 +216,11 @@ func BenchmarkGetPosts(b *testing.B) {
 	// 预先创建一些测试文章
 	for i := 0; i < 100; i++ {
 		post := &Models.Post{
-			Title:    fmt.Sprintf("Test Post %d", i),
-			Content:  fmt.Sprintf("Test content %d", i),
-			Excerpt:  fmt.Sprintf("Test excerpt %d", i),
-			Status:   "published",
-			AuthorID: testUser.ID,
+			Title:   fmt.Sprintf("Test Post %d", i),
+			Content: fmt.Sprintf("Test content %d", i),
+			Summary: fmt.Sprintf("Test summary %d", i),
+			Status:  1, // 1-发布状态
+			UserID:  testUser.ID,
 		}
 		testDB.Create(post)
 	}
@@ -284,7 +288,7 @@ func BenchmarkDatabaseOperations(b *testing.B) {
 				Email:    fmt.Sprintf("db_user_%d@example.com", i),
 				Password: "password123",
 				Role:     "user",
-				Status:   "active",
+				Status:   1, // 1-正常状态
 			}
 			testDB.Create(user)
 		}
@@ -311,7 +315,7 @@ func BenchmarkJWTGeneration(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, err := Utils.GenerateToken(testUser.ID, testUser.Username, testUser.Role)
+		_, err := Utils.GenerateToken(testUser.ID, testUser.Username, testUser.Email, testUser.Role)
 		if err != nil {
 			b.Errorf("Failed to generate JWT: %v", err)
 		}
@@ -352,9 +356,9 @@ func BenchmarkPasswordVerification(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		err := Utils.CheckPassword(password, hashedPassword)
-		if err != nil {
-			b.Errorf("Failed to verify password: %v", err)
+		valid := Utils.CheckPassword(password, hashedPassword)
+		if !valid {
+			b.Errorf("Failed to verify password")
 		}
 	}
 }
@@ -372,7 +376,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 				Email:    fmt.Sprintf("memory_user_%d_%d@example.com", i, j),
 				Password: "password123",
 				Role:     "user",
-				Status:   "active",
+				Status:   1, // 1-正常状态
 			}
 		}
 
@@ -391,7 +395,7 @@ func BenchmarkConcurrentDatabaseWrites(b *testing.B) {
 				Email:    fmt.Sprintf("concurrent_user_%d@example.com", i),
 				Password: "password123",
 				Role:     "user",
-				Status:   "active",
+				Status:   1, // 1-正常状态
 			}
 			testDB.Create(user)
 			i++

@@ -2,15 +2,16 @@ package Migrations
 
 import (
 	"fmt"
-	"gorm.io/gorm"
 	"log"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // Migration 迁移记录模型
 type Migration struct {
 	ID        uint      `json:"id" gorm:"primarykey"`
-	Migration string    `json:"migration" gorm:"uniqueIndex:idx_migrations_migration,length:255;not null"`
+	Migration string    `json:"migration" gorm:"uniqueIndex;not null;size:255"`
 	Batch     int       `json:"batch"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -36,7 +37,16 @@ func NewMigrationManager(db *gorm.DB) *MigrationManager {
 
 // CreateMigrationsTable 创建迁移表
 func (m *MigrationManager) CreateMigrationsTable() error {
-	return m.db.AutoMigrate(&Migration{})
+	// 检查迁移表是否存在
+	if !m.db.Migrator().HasTable(&Migration{}) {
+		// 如果表不存在，创建迁移表
+		log.Println("创建迁移表...")
+		return m.db.AutoMigrate(&Migration{})
+	}
+
+	// 表已存在，无需重新创建
+	log.Println("迁移表已存在，跳过创建")
+	return nil
 }
 
 // GetMigrations 获取所有迁移

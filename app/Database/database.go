@@ -307,7 +307,9 @@ func initDB() {
 			})
 
 		case "sqlite":
-			DB, err = gorm.Open(sqlite.Open(cfg.Database), &gorm.Config{
+			// 使用纯 Go 的 SQLite 驱动，不需要 CGO
+			dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)", cfg.Database)
+			DB, err = gorm.Open(sqlite.Open(dsn), &gorm.Config{
 				Logger: getGormLogger(),
 			})
 

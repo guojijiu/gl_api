@@ -1,12 +1,14 @@
 package Services
 
 import (
+	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Database"
 	"cloud-platform-api/app/Http/Requests"
 	"cloud-platform-api/app/Models"
 	"cloud-platform-api/app/Services"
 	"cloud-platform-api/app/Utils"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -26,6 +28,20 @@ type AuthServiceTestSuite struct {
 
 // SetupSuite 测试套件初始化
 func (ats *AuthServiceTestSuite) SetupSuite() {
+	// 设置测试环境变量
+	os.Setenv("SERVER_MODE", "test")
+	os.Setenv("DB_DRIVER", "sqlite")
+	os.Setenv("DB_DATABASE", ":memory:")
+	os.Setenv("JWT_SECRET", "test-jwt-secret-key-for-testing-only-32-chars")
+
+	// 加载配置
+	Config.LoadConfig()
+
+	// 初始化数据库
+	Database.InitDB()
+	Database.AutoMigrate()
+
+	// 初始化认证服务
 	ats.authService = Services.NewAuthService()
 }
 
@@ -312,7 +328,7 @@ func (ats *AuthServiceTestSuite) TestLogout() {
 	ats.Require().NoError(err)
 
 	// 测试正常登出
-	err = ats.authService.Logout(user.ID)
+	err = ats.authService.Logout(fmt.Sprintf("%d", user.ID))
 	ats.Require().NoError(err)
 }
 

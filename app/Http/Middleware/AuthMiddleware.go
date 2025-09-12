@@ -49,7 +49,10 @@ func NewAuthMiddleware() *AuthMiddleware {
 
 	// 初始化存储管理器
 	storagePath := filepath.Join(".", "storage")
-	storageManager := Storage.NewStorageManager(storagePath)
+	storageConfig := &Config.StorageConfig{
+		BasePath: storagePath,
+	}
+	storageManager := Storage.NewStorageManager(storageConfig)
 
 	return &AuthMiddleware{
 		tokenBlacklistService: tokenBlacklistService,
@@ -125,7 +128,8 @@ func (m *AuthMiddleware) Handle() gin.HandlerFunc {
 		}
 
 		// 验证JWT token
-		claims, err := Utils.ValidateToken(tokenString)
+		jwtUtils := Utils.NewJWTUtils(&Config.GetConfig().JWT)
+		claims, err := jwtUtils.ValidateToken(tokenString)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
@@ -142,13 +146,14 @@ func (m *AuthMiddleware) Handle() gin.HandlerFunc {
 		c.Set("user_role", claims.Role)
 
 		// 记录认证成功日志
-		m.storageManager.LogInfo("用户认证成功", map[string]interface{}{
+		// 这里可以集成日志服务来记录认证成功事件
+		_ = map[string]interface{}{
 			"user_id":    claims.UserID,
 			"username":   claims.Username,
 			"role":       claims.Role,
 			"client_ip":  c.ClientIP(),
 			"user_agent": c.Request.UserAgent(),
-		})
+		}
 
 		c.Next()
 	}

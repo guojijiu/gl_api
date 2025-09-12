@@ -210,7 +210,7 @@ func (s *BackupService) CreateFileBackup() (*BackupInfo, error) {
 	defer zipWriter.Close()
 
 	// 备份存储目录
-	storagePath := s.storageManager.BasePath
+	storagePath := s.storageManager.BasePath()
 	err = s.addDirectoryToZip(zipWriter, storagePath, "storage")
 	if err != nil {
 		backupInfo.Status = "failed"
@@ -293,7 +293,7 @@ func (s *BackupService) CreateFullBackup() (*BackupInfo, error) {
 	}
 
 	// 2. 备份文件
-	storagePath := s.storageManager.BasePath
+	storagePath := s.storageManager.BasePath()
 	err = s.addDirectoryToZip(zipWriter, storagePath, "storage")
 	if err != nil {
 		backupInfo.Status = "failed"
@@ -818,7 +818,7 @@ func (s *BackupService) restoreFiles(backupPath string) error {
 	// 解压到存储目录
 	for _, file := range zipReader.File {
 		// 构建目标路径
-		targetPath := filepath.Join(s.storageManager.BasePath, file.Name)
+		targetPath := filepath.Join(s.storageManager.BasePath(), file.Name)
 
 		// 创建目录
 		if file.FileInfo().IsDir() {
@@ -912,16 +912,16 @@ func (s *BackupService) restoreFullBackup(backupPath string) error {
 	if _, err := os.Stat(storageBackupPath); err == nil {
 		// 备份当前存储目录
 		currentStorageBackup := filepath.Join(s.backupPath, "current_storage_backup")
-		if err := os.Rename(s.storageManager.BasePath, currentStorageBackup); err != nil {
+		if err := os.Rename(s.storageManager.BasePath(), currentStorageBackup); err != nil {
 			s.storageManager.LogWarning("备份当前存储目录失败", map[string]interface{}{
 				"error": err.Error(),
 			})
 		}
 
 		// 恢复存储文件
-		if err := os.Rename(storageBackupPath, s.storageManager.BasePath); err != nil {
+		if err := os.Rename(storageBackupPath, s.storageManager.BasePath()); err != nil {
 			// 如果恢复失败，尝试恢复原存储目录
-			os.Rename(currentStorageBackup, s.storageManager.BasePath)
+			os.Rename(currentStorageBackup, s.storageManager.BasePath())
 			return fmt.Errorf("恢复存储文件失败: %v", err)
 		}
 

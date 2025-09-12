@@ -1,6 +1,7 @@
 package Services
 
 import (
+	"cloud-platform-api/app/Config"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -28,63 +29,52 @@ import (
 // - 支持消息队列，防止消息丢失
 type WebSocketService struct {
 	// 连接管理
-	clients    map[*Client]bool
-	clientsMu  sync.RWMutex
-	
+	clients   map[*Client]bool
+	clientsMu sync.RWMutex
+
 	// 房间管理
-	rooms      map[string]*Room
-	roomsMu    sync.RWMutex
-	
+	rooms   map[string]*Room
+	roomsMu sync.RWMutex
+
 	// 消息处理
 	broadcast  chan *Message
 	register   chan *Client
 	unregister chan *Client
-	
-	// 配置
-	upgrader   websocket.Upgrader
-	config     *WebSocketConfig
-}
 
-// WebSocketConfig WebSocket配置
-type WebSocketConfig struct {
-	ReadBufferSize   int           `json:"read_buffer_size"`
-	WriteBufferSize  int           `json:"write_buffer_size"`
-	PingPeriod       time.Duration `json:"ping_period"`
-	PongWait         time.Duration `json:"pong_wait"`
-	WriteWait        time.Duration `json:"write_wait"`
-	MaxMessageSize   int64         `json:"max_message_size"`
-	EnableCompression bool         `json:"enable_compression"`
+	// 配置
+	upgrader websocket.Upgrader
+	config   *Config.WebSocketConfig
 }
 
 // Client WebSocket客户端
 type Client struct {
-	ID       string          `json:"id"`
-	UserID   uint            `json:"user_id"`
-	Username string          `json:"username"`
-	Conn     *websocket.Conn `json:"-"`
+	ID       string            `json:"id"`
+	UserID   uint              `json:"user_id"`
+	Username string            `json:"username"`
+	Conn     *websocket.Conn   `json:"-"`
 	Service  *WebSocketService `json:"-"`
-	
+
 	// 消息通道
 	send chan []byte
-	
+
 	// 房间信息
 	rooms map[string]*Room
-	
+
 	// 连接状态
 	connected bool
-	mu       sync.Mutex
+	mu        sync.Mutex
 }
 
 // Room 聊天房间
 type Room struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
+	ID          string           `json:"id"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
 	Clients     map[*Client]bool `json:"-"`
 	mu          sync.RWMutex
-	
+
 	// 房间统计
-	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt    time.Time `json:"created_at"`
 	MessageCount int64     `json:"message_count"`
 }
 
@@ -100,24 +90,17 @@ type Message struct {
 }
 
 // NewWebSocketService 创建WebSocket服务
-func NewWebSocketService(config *WebSocketConfig) *WebSocketService {
+func NewWebSocketService(config *Config.WebSocketConfig) *WebSocketService {
 	if config == nil {
-		config = &WebSocketConfig{
-			ReadBufferSize:   1024,
-			WriteBufferSize:  1024,
-			PingPeriod:       60 * time.Second,
-			PongWait:         10 * time.Second,
-			WriteWait:        10 * time.Second,
-			MaxMessageSize:   512,
-			EnableCompression: true,
-		}
+		config = &Config.WebSocketConfig{}
+		config.SetDefaults()
 	}
-	
+
 	service := &WebSocketService{
-		clients:   make(map[*Client]bool),
-		rooms:     make(map[string]*Room),
-		broadcast: make(chan *Message, 100),
-		register:  make(chan *Client, 100),
+		clients:    make(map[*Client]bool),
+		rooms:      make(map[string]*Room),
+		broadcast:  make(chan *Message, 100),
+		register:   make(chan *Client, 100),
 		unregister: make(chan *Client, 100),
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  config.ReadBufferSize,
@@ -129,13 +112,13 @@ func NewWebSocketService(config *WebSocketConfig) *WebSocketService {
 		},
 		config: config,
 	}
-	
+
 	// 启动消息处理
 	go service.run()
-	
+
 	// 启动心跳检测
 	go service.heartbeat()
-	
+
 	return service
 }
 
@@ -147,20 +130,20 @@ func (s *WebSocketService) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		log.Printf("WebSocket升级失败: %v", err)
 		return
 	}
-	
+
 	// 创建客户端
 	client := &Client{
-		ID:       generateClientID(),
-		Conn:     conn,
-		Service:  s,
-		send:     make(chan []byte, 256),
-		rooms:    make(map[string]*Room),
+		ID:        generateClientID(),
+		Conn:      conn,
+		Service:   s,
+		send:      make(chan []byte, 256),
+		rooms:     make(map[string]*Room),
 		connected: true,
 	}
-	
+
 	// 注册客户端
 	s.register <- client
-	
+
 	// 启动读写协程
 	go client.writePump()
 	go client.readPump()
@@ -174,7 +157,7 @@ func (s *WebSocketService) run() {
 			s.clientsMu.Lock()
 			s.clients[client] = true
 			s.clientsMu.Unlock()
-			
+
 			// 发送欢迎消息
 			welcomeMsg := &Message{
 				Type:      "welcome",
@@ -182,10 +165,10 @@ func (s *WebSocketService) run() {
 				Timestamp: time.Now(),
 			}
 			client.sendMessage(welcomeMsg)
-			
+
 			// 更新在线用户统计
 			s.broadcastUserCount()
-			
+
 		case client := <-s.unregister:
 			s.clientsMu.Lock()
 			if _, ok := s.clients[client]; ok {
@@ -193,13 +176,13 @@ func (s *WebSocketService) run() {
 				close(client.send)
 			}
 			s.clientsMu.Unlock()
-			
+
 			// 从所有房间中移除
 			client.leaveAllRooms()
-			
+
 			// 更新在线用户统计
 			s.broadcastUserCount()
-			
+
 		case message := <-s.broadcast:
 			s.broadcastMessage(message)
 		}
@@ -210,7 +193,7 @@ func (s *WebSocketService) run() {
 func (s *WebSocketService) broadcastMessage(message *Message) {
 	s.clientsMu.RLock()
 	defer s.clientsMu.RUnlock()
-	
+
 	for client := range s.clients {
 		select {
 		case client.send <- message.ToJSON():
@@ -226,11 +209,11 @@ func (s *WebSocketService) broadcastToRoom(roomID string, message *Message) {
 	s.roomsMu.RLock()
 	room, exists := s.rooms[roomID]
 	s.roomsMu.RUnlock()
-	
+
 	if !exists {
 		return
 	}
-	
+
 	room.broadcast(message)
 }
 
@@ -238,7 +221,7 @@ func (s *WebSocketService) broadcastToRoom(roomID string, message *Message) {
 func (s *WebSocketService) CreateRoom(id, name, description string) *Room {
 	s.roomsMu.Lock()
 	defer s.roomsMu.Unlock()
-	
+
 	room := &Room{
 		ID:          id,
 		Name:        name,
@@ -246,7 +229,7 @@ func (s *WebSocketService) CreateRoom(id, name, description string) *Room {
 		Clients:     make(map[*Client]bool),
 		CreatedAt:   time.Now(),
 	}
-	
+
 	s.rooms[id] = room
 	return room
 }
@@ -255,7 +238,7 @@ func (s *WebSocketService) CreateRoom(id, name, description string) *Room {
 func (s *WebSocketService) GetRoom(id string) *Room {
 	s.roomsMu.RLock()
 	defer s.roomsMu.RUnlock()
-	
+
 	return s.rooms[id]
 }
 
@@ -263,12 +246,12 @@ func (s *WebSocketService) GetRoom(id string) *Room {
 func (s *WebSocketService) GetRooms() []*Room {
 	s.roomsMu.RLock()
 	defer s.roomsMu.RUnlock()
-	
+
 	rooms := make([]*Room, 0, len(s.rooms))
 	for _, room := range s.rooms {
 		rooms = append(rooms, room)
 	}
-	
+
 	return rooms
 }
 
@@ -276,7 +259,7 @@ func (s *WebSocketService) GetRooms() []*Room {
 func (s *WebSocketService) GetOnlineUsers() int {
 	s.clientsMu.RLock()
 	defer s.clientsMu.RUnlock()
-	
+
 	return len(s.clients)
 }
 
@@ -290,7 +273,7 @@ func (s *WebSocketService) broadcastUserCount() {
 		},
 		Timestamp: time.Now(),
 	}
-	
+
 	s.broadcastMessage(msg)
 }
 
@@ -298,7 +281,7 @@ func (s *WebSocketService) broadcastUserCount() {
 func (s *WebSocketService) heartbeat() {
 	ticker := time.NewTicker(s.config.PingPeriod)
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		s.clientsMu.RLock()
 		for client := range s.clients {
@@ -322,14 +305,14 @@ func (c *Client) readPump() {
 		c.Service.unregister <- c
 		c.Conn.Close()
 	}()
-	
+
 	c.Conn.SetReadLimit(c.Service.config.MaxMessageSize)
 	c.Conn.SetReadDeadline(time.Now().Add(c.Service.config.PongWait))
 	c.Conn.SetPongHandler(func(string) error {
 		c.Conn.SetReadDeadline(time.Now().Add(c.Service.config.PongWait))
 		return nil
 	})
-	
+
 	for {
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
@@ -338,7 +321,7 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		
+
 		// 处理消息
 		c.handleMessage(message)
 	}
@@ -351,7 +334,7 @@ func (c *Client) writePump() {
 		ticker.Stop()
 		c.Conn.Close()
 	}()
-	
+
 	for {
 		select {
 		case message, ok := <-c.send:
@@ -360,18 +343,18 @@ func (c *Client) writePump() {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			
+
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
 			}
-			
+
 			w.Write(message)
-			
+
 			if err := w.Close(); err != nil {
 				return
 			}
-			
+
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(c.Service.config.WriteWait))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
@@ -388,10 +371,10 @@ func (c *Client) handleMessage(data []byte) {
 		c.sendError("消息格式错误")
 		return
 	}
-	
+
 	msg.From = c.ID
 	msg.Timestamp = time.Now()
-	
+
 	switch msg.Type {
 	case "join_room":
 		c.joinRoom(msg.RoomID)
@@ -414,10 +397,10 @@ func (c *Client) joinRoom(roomID string) {
 	if room == nil {
 		room = c.Service.CreateRoom(roomID, "Room "+roomID, "")
 	}
-	
+
 	room.addClient(c)
 	c.rooms[roomID] = room
-	
+
 	// 发送加入确认
 	msg := &Message{
 		Type:      "room_joined",
@@ -434,7 +417,7 @@ func (c *Client) leaveRoom(roomID string) {
 	if room != nil {
 		room.removeClient(c)
 		delete(c.rooms, roomID)
-		
+
 		// 发送离开确认
 		msg := &Message{
 			Type:      "room_left",
@@ -500,7 +483,7 @@ func (c *Client) sendError(content string) {
 func (r *Room) addClient(client *Client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	r.Clients[client] = true
 }
 
@@ -508,7 +491,7 @@ func (r *Room) addClient(client *Client) {
 func (r *Room) removeClient(client *Client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	delete(r.Clients, client)
 }
 
@@ -516,7 +499,7 @@ func (r *Room) removeClient(client *Client) {
 func (r *Room) broadcast(message *Message) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	for client := range r.Clients {
 		select {
 		case client.send <- message.ToJSON():
@@ -525,7 +508,7 @@ func (r *Room) broadcast(message *Message) {
 			delete(r.Clients, client)
 		}
 	}
-	
+
 	r.MessageCount++
 }
 
@@ -533,7 +516,7 @@ func (r *Room) broadcast(message *Message) {
 func (r *Room) GetClientCount() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	return len(r.Clients)
 }
 

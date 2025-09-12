@@ -3,6 +3,8 @@ package tests
 import (
 	"testing"
 
+	"cloud-platform-api/tests/testsetup"
+
 	"github.com/stretchr/testify/suite"
 )
 
@@ -19,17 +21,17 @@ func (ts *TokenHelperExampleTestSuite) TestCreateUserWithToken() {
 	ts.Require().NotNil(userInfo)
 	ts.Require().NotNil(userInfo.User)
 	ts.Require().NotEmpty(userInfo.Token)
-	
+
 	// 验证用户信息
 	ts.Require().Equal("testuser", userInfo.User.Username)
 	ts.Require().Equal("test@example.com", userInfo.User.Email)
 	ts.Require().Equal("user", userInfo.User.Role)
-	
+
 	// 验证token有效性
 	ts.AssertTokenValid(userInfo.Token)
-	
+
 	// 验证token内容
-	claims, err := ts.tokenHelper.ValidateToken(userInfo.Token)
+	claims, err := ts.TokenHelper.ValidateToken(userInfo.Token)
 	ts.Require().NoError(err)
 	ts.Require().Equal(userInfo.User.ID, claims.UserID)
 	ts.Require().Equal(userInfo.User.Username, claims.Username)
@@ -44,17 +46,17 @@ func (ts *TokenHelperExampleTestSuite) TestCreateAdminUserWithToken() {
 	ts.Require().NotNil(adminInfo)
 	ts.Require().NotNil(adminInfo.User)
 	ts.Require().NotEmpty(adminInfo.Token)
-	
+
 	// 验证管理员信息
 	ts.Require().Equal("admin", adminInfo.User.Username)
 	ts.Require().Equal("admin@test.com", adminInfo.User.Email)
 	ts.Require().Equal("admin", adminInfo.User.Role)
-	
+
 	// 验证token有效性
 	ts.AssertTokenValid(adminInfo.Token)
-	
+
 	// 验证token内容
-	claims, err := ts.tokenHelper.ValidateToken(adminInfo.Token)
+	claims, err := ts.TokenHelper.ValidateToken(adminInfo.Token)
 	ts.Require().NoError(err)
 	ts.Require().Equal(adminInfo.User.ID, claims.UserID)
 	ts.Require().Equal(adminInfo.User.Username, claims.Username)
@@ -69,12 +71,12 @@ func (ts *TokenHelperExampleTestSuite) TestCreateNormalUserWithToken() {
 	ts.Require().NotNil(userInfo)
 	ts.Require().NotNil(userInfo.User)
 	ts.Require().NotEmpty(userInfo.Token)
-	
+
 	// 验证用户信息
 	ts.Require().Equal("user", userInfo.User.Username)
 	ts.Require().Equal("user@test.com", userInfo.User.Email)
 	ts.Require().Equal("user", userInfo.User.Role)
-	
+
 	// 验证token有效性
 	ts.AssertTokenValid(userInfo.Token)
 }
@@ -84,14 +86,14 @@ func (ts *TokenHelperExampleTestSuite) TestGetTokenHeaders() {
 	// 创建测试用户
 	userInfo, err := ts.CreateTestUserWithToken("headertest", "header@example.com", "password123", "user")
 	ts.Require().NoError(err)
-	
+
 	// 获取token请求头
 	headers := ts.GetTestTokenHeaders(userInfo.Token)
 	ts.Require().NotNil(headers)
 	ts.Require().Contains(headers, "Authorization")
 	ts.Require().Contains(headers, "Content-Type")
 	ts.Require().Contains(headers, "Accept")
-	
+
 	// 验证Authorization头格式
 	ts.Require().Equal("Bearer "+userInfo.Token, headers["Authorization"])
 	ts.Require().Equal("application/json", headers["Content-Type"])
@@ -104,14 +106,14 @@ func (ts *TokenHelperExampleTestSuite) TestGetAdminTokenHeaders() {
 	headers, err := ts.GetAdminTokenHeaders()
 	ts.Require().NoError(err)
 	ts.Require().NotNil(headers)
-	
+
 	// 验证请求头内容
 	ts.Require().Contains(headers, "Authorization")
 	ts.Require().Contains(headers, "Content-Type")
 	ts.Require().Contains(headers, "Accept")
 	ts.Require().Contains(headers, "X-Test-User-ID")
 	ts.Require().Contains(headers, "X-Test-User-Role")
-	
+
 	// 验证Authorization头格式
 	ts.Require().Contains(headers["Authorization"], "Bearer ")
 	ts.Require().Equal("application/json", headers["Content-Type"])
@@ -125,14 +127,14 @@ func (ts *TokenHelperExampleTestSuite) TestGetUserTokenHeaders() {
 	headers, err := ts.GetUserTokenHeaders()
 	ts.Require().NoError(err)
 	ts.Require().NotNil(headers)
-	
+
 	// 验证请求头内容
 	ts.Require().Contains(headers, "Authorization")
 	ts.Require().Contains(headers, "Content-Type")
 	ts.Require().Contains(headers, "Accept")
 	ts.Require().Contains(headers, "X-Test-User-ID")
 	ts.Require().Contains(headers, "X-Test-User-Role")
-	
+
 	// 验证Authorization头格式
 	ts.Require().Contains(headers["Authorization"], "Bearer ")
 	ts.Require().Equal("application/json", headers["Content-Type"])
@@ -145,10 +147,10 @@ func (ts *TokenHelperExampleTestSuite) TestTokenValidation() {
 	// 创建有效token
 	userInfo, err := ts.CreateTestUserWithToken("validationtest", "validation@example.com", "password123", "user")
 	ts.Require().NoError(err)
-	
+
 	// 验证有效token
 	ts.AssertTokenValid(userInfo.Token)
-	
+
 	// 验证无效token
 	ts.AssertTokenInvalid("invalid.token.here")
 	ts.AssertTokenInvalid("")
@@ -160,12 +162,12 @@ func (ts *TokenHelperExampleTestSuite) TestCreateExpiredToken() {
 	// 创建测试用户
 	userInfo, err := ts.CreateTestUserWithToken("expiredtest", "expired@example.com", "password123", "user")
 	ts.Require().NoError(err)
-	
+
 	// 创建过期token
-	expiredToken, err := ts.tokenHelper.CreateExpiredToken(userInfo.User)
+	expiredToken, err := ts.TokenHelper.CreateExpiredToken(userInfo.User)
 	ts.Require().NoError(err)
 	ts.Require().NotEmpty(expiredToken)
-	
+
 	// 验证过期token无效
 	ts.AssertTokenInvalid(expiredToken)
 }
@@ -173,9 +175,9 @@ func (ts *TokenHelperExampleTestSuite) TestCreateExpiredToken() {
 // TestCreateInvalidToken 测试创建无效token
 func (ts *TokenHelperExampleTestSuite) TestCreateInvalidToken() {
 	// 创建无效token
-	invalidToken := ts.tokenHelper.CreateInvalidToken()
+	invalidToken := ts.TokenHelper.CreateInvalidToken()
 	ts.Require().NotEmpty(invalidToken)
-	
+
 	// 验证无效token
 	ts.AssertTokenInvalid(invalidToken)
 }
@@ -183,19 +185,19 @@ func (ts *TokenHelperExampleTestSuite) TestCreateInvalidToken() {
 // TestCreateMultipleUsersWithTokens 测试创建多个用户并获取token
 func (ts *TokenHelperExampleTestSuite) TestCreateMultipleUsersWithTokens() {
 	// 创建多个用户
-	users, err := ts.tokenHelper.CreateMultipleUsersWithTokens(3)
+	users, err := ts.TokenHelper.CreateMultipleUsersWithTokens(3)
 	ts.Require().NoError(err)
 	ts.Require().Len(users, 3)
-	
+
 	// 验证每个用户
 	for username, userInfo := range users {
 		ts.Require().NotNil(userInfo)
 		ts.Require().NotNil(userInfo.User)
 		ts.Require().NotEmpty(userInfo.Token)
-		
+
 		// 验证token有效性
 		ts.AssertTokenValid(userInfo.Token)
-		
+
 		// 验证用户名格式
 		ts.Require().Contains(username, "testuser")
 	}

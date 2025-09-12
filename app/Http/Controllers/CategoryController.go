@@ -5,8 +5,9 @@ import (
 	"cloud-platform-api/app/Http/Requests"
 	"cloud-platform-api/app/Models"
 	"cloud-platform-api/app/Services"
-	"github.com/gin-gonic/gin"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 // CategoryController 分类控制器
@@ -28,29 +29,29 @@ func NewCategoryController() *CategoryController {
 // 5. 包含每个分类的文章数量统计
 func (c *CategoryController) GetCategories(ctx *gin.Context) {
 	status := ctx.Query("status")
-	
+
 	// 构建查询条件
 	query := Database.DB.Model(&Models.Category{}).Preload("Children").Preload("Posts")
-	
+
 	// 状态筛选
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
-	
+
 	// 只获取根分类
 	query = query.Where("parent_id IS NULL").Order("sort ASC, created_at ASC")
-	
+
 	var categories []Models.Category
 	if err := query.Find(&categories).Error; err != nil {
 		c.ServerError(ctx, "获取分类列表失败")
 		return
 	}
-	
+
 	// 递归加载子分类
 	for i := range categories {
 		c.loadCategoryChildren(&categories[i])
 	}
-	
+
 	c.Success(ctx, categories, "分类列表获取成功")
 }
 
@@ -67,32 +68,32 @@ func (c *CategoryController) GetCategory(ctx *gin.Context) {
 		c.ValidationError(ctx, "无效的分类ID")
 		return
 	}
-	
+
 	var category Models.Category
 	if err := Database.DB.Preload("Parent").Preload("Children").Preload("Posts").First(&category, id).Error; err != nil {
 		c.NotFound(ctx, "分类不存在")
 		return
 	}
-	
+
 	// 获取分页参数
 	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(ctx.DefaultQuery("limit", "10"))
-	
+
 	// 获取分类下的文章（分页）
 	offset := (page - 1) * limit
 	var posts []Models.Post
 	var total int64
-	
+
 	Database.DB.Model(&Models.Post{}).Where("category_id = ? AND status = 1", id).Count(&total)
 	Database.DB.Where("category_id = ? AND status = 1", id).
 		Preload("User").Preload("Tags").
 		Order("created_at DESC").
 		Offset(offset).Limit(limit).
 		Find(&posts)
-	
+
 	// 构建响应数据
 	response := gin.H{
-		"category": category,
+		"category":  category,
 		"full_path": category.GetFullPath(),
 		"posts": gin.H{
 			"data": posts,
@@ -104,7 +105,7 @@ func (c *CategoryController) GetCategory(ctx *gin.Context) {
 			},
 		},
 	}
-	
+
 	c.Success(ctx, response, "分类获取成功")
 }
 
@@ -121,14 +122,14 @@ func (c *CategoryController) CreateCategory(ctx *gin.Context) {
 		c.ValidationError(ctx, err.Error())
 		return
 	}
-	
+
 	// 检查分类名称唯一性
 	var existingCategory Models.Category
 	if err := Database.DB.Where("name = ?", request.Name).First(&existingCategory).Error; err == nil {
 		c.ValidationError(ctx, "分类名称已存在")
 		return
 	}
-	
+
 	// 验证父分类是否存在
 	if request.ParentID != nil {
 		var parentCategory Models.Category
@@ -137,7 +138,7 @@ func (c *CategoryController) CreateCategory(ctx *gin.Context) {
 			return
 		}
 	}
-	
+
 	// 创建分类
 	category := &Models.Category{
 		Name:        request.Name,
@@ -146,15 +147,15 @@ func (c *CategoryController) CreateCategory(ctx *gin.Context) {
 		Sort:        request.Sort,
 		Status:      1, // 默认为启用状态
 	}
-	
+
 	if err := Database.DB.Create(category).Error; err != nil {
 		c.ServerError(ctx, "创建分类失败")
 		return
 	}
-	
+
 	// 重新加载关联数据
 	Database.DB.Preload("Parent").Preload("Children").First(category, category.ID)
-	
+
 	c.Success(ctx, category, "分类创建成功")
 }
 
@@ -171,20 +172,20 @@ func (c *CategoryController) UpdateCategory(ctx *gin.Context) {
 		c.ValidationError(ctx, "无效的分类ID")
 		return
 	}
-	
+
 	var request Requests.UpdateCategoryInput
 	if err := ctx.ShouldBindJSON(&request); err != nil {
 		c.ValidationError(ctx, err.Error())
 		return
 	}
-	
+
 	// 查找分类
 	var category Models.Category
 	if err := Database.DB.First(&category, id).Error; err != nil {
 		c.NotFound(ctx, "分类不存在")
 		return
 	}
-	
+
 	// 检查分类名称唯一性（排除自己）
 	if request.Name != "" && request.Name != category.Name {
 		var existingCategory Models.Category
@@ -193,7 +194,7 @@ func (c *CategoryController) UpdateCategory(ctx *gin.Context) {
 			return
 		}
 	}
-	
+
 	// 验证父分类
 	if request.ParentID != nil {
 		// 不能设置自己为父分类
@@ -201,13 +202,13 @@ func (c *CategoryController) UpdateCategory(ctx *gin.Context) {
 			c.ValidationError(ctx, "不能设置自己为父分类")
 			return
 		}
-		
+
 		// 检查是否设置为自己的子分类
 		if c.isDescendant(uint(id), *request.ParentID) {
 			c.ValidationError(ctx, "不能设置自己的子分类为父分类")
 			return
 		}
-		
+
 		// 验证父分类是否存在
 		var parentCategory Models.Category
 		if err := Database.DB.First(&parentCategory, *request.ParentID).Error; err != nil {
@@ -215,7 +216,7 @@ func (c *CategoryController) UpdateCategory(ctx *gin.Context) {
 			return
 		}
 	}
-	
+
 	// 更新分类字段
 	if request.Name != "" {
 		category.Name = request.Name
@@ -232,16 +233,16 @@ func (c *CategoryController) UpdateCategory(ctx *gin.Context) {
 	if request.Status != nil {
 		category.Status = *request.Status
 	}
-	
+
 	// 保存更新
 	if err := Database.DB.Save(&category).Error; err != nil {
 		c.ServerError(ctx, "更新分类失败")
 		return
 	}
-	
+
 	// 重新加载关联数据
 	Database.DB.Preload("Parent").Preload("Children").First(&category, category.ID)
-	
+
 	c.Success(ctx, category, "分类更新成功")
 }
 
@@ -258,14 +259,14 @@ func (c *CategoryController) DeleteCategory(ctx *gin.Context) {
 		c.ValidationError(ctx, "无效的分类ID")
 		return
 	}
-	
+
 	// 查找分类
 	var category Models.Category
 	if err := Database.DB.Preload("Children").First(&category, id).Error; err != nil {
 		c.NotFound(ctx, "分类不存在")
 		return
 	}
-	
+
 	// 检查是否有子分类
 	if len(category.Children) > 0 {
 		// 检查是否强制删除
@@ -274,14 +275,14 @@ func (c *CategoryController) DeleteCategory(ctx *gin.Context) {
 			c.ValidationError(ctx, "该分类下有子分类，无法删除。如需强制删除，请添加force=true参数")
 			return
 		}
-		
+
 		// 强制删除时，先删除所有子分类
 		if err := c.deleteCategoryRecursively(uint(id)); err != nil {
 			c.ServerError(ctx, "删除子分类失败")
 			return
 		}
 	}
-	
+
 	// 检查是否有文章
 	var postCount int64
 	Database.DB.Model(&Models.Post{}).Where("category_id = ?", id).Count(&postCount)
@@ -295,7 +296,7 @@ func (c *CategoryController) DeleteCategory(ctx *gin.Context) {
 				c.ValidationError(ctx, "指定的目标分类不存在")
 				return
 			}
-			
+
 			// 移动文章到目标分类
 			if err := Database.DB.Model(&Models.Post{}).Where("category_id = ?", id).Update("category_id", targetCategoryID).Error; err != nil {
 				c.ServerError(ctx, "移动文章失败")
@@ -308,7 +309,7 @@ func (c *CategoryController) DeleteCategory(ctx *gin.Context) {
 				c.ValidationError(ctx, "该分类下有文章，无法删除。请指定move_to参数移动文章，或添加force=true参数强制删除")
 				return
 			}
-			
+
 			// 强制删除时，先删除所有文章
 			if err := Database.DB.Where("category_id = ?", id).Delete(&Models.Post{}).Error; err != nil {
 				c.ServerError(ctx, "删除文章失败")
@@ -316,18 +317,18 @@ func (c *CategoryController) DeleteCategory(ctx *gin.Context) {
 			}
 		}
 	}
-	
+
 	// 删除分类
 	if err := Database.DB.Delete(&category).Error; err != nil {
 		c.ServerError(ctx, "删除分类失败")
 		return
 	}
-	
+
 	// 记录删除操作到审计日志
-	auditService := Services.NewAuditService()
+	auditService := Services.NewAuditService(Database.DB)
 	currentUserID, _ := strconv.ParseUint(ctx.GetString("user_id"), 10, 32)
 	auditService.LogUserAction(nil, uint(currentUserID), ctx.GetString("username"), "delete_category", "category", uint(id), "删除分类")
-	
+
 	c.Success(ctx, gin.H{
 		"deleted_category_id": id,
 		"deleted_posts":       postCount,
@@ -346,19 +347,19 @@ func (c *CategoryController) deleteCategoryRecursively(categoryID uint) error {
 	if err := Database.DB.Where("parent_id = ?", categoryID).Find(&children).Error; err != nil {
 		return err
 	}
-	
+
 	// 递归删除子分类
 	for _, child := range children {
 		if err := c.deleteCategoryRecursively(child.ID); err != nil {
 			return err
 		}
 	}
-	
+
 	// 删除当前分类下的文章
 	if err := Database.DB.Where("category_id = ?", categoryID).Delete(&Models.Post{}).Error; err != nil {
 		return err
 	}
-	
+
 	// 删除当前分类
 	return Database.DB.Delete(&Models.Category{}, categoryID).Error
 }
@@ -370,7 +371,7 @@ func (c *CategoryController) deleteCategoryRecursively(categoryID uint) error {
 // 3. 按排序字段排序
 func (c *CategoryController) loadCategoryChildren(category *Models.Category) {
 	Database.DB.Where("parent_id = ?", category.ID).Order("sort ASC, created_at ASC").Find(&category.Children)
-	
+
 	for i := range category.Children {
 		c.loadCategoryChildren(&category.Children[i])
 	}
@@ -386,15 +387,14 @@ func (c *CategoryController) isDescendant(categoryID, parentID uint) bool {
 	if err := Database.DB.First(&category, parentID).Error; err != nil {
 		return false
 	}
-	
+
 	if category.ParentID == nil {
 		return false
 	}
-	
+
 	if *category.ParentID == categoryID {
 		return true
 	}
-	
+
 	return c.isDescendant(categoryID, *category.ParentID)
 }
-

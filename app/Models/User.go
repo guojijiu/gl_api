@@ -2,13 +2,14 @@ package Models
 
 import (
 	"cloud-platform-api/app/Utils"
+	"time"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
-	"time"
 )
 
 // User 用户模型
-// 
+//
 // 重要功能说明：
 // 1. 用户身份管理：唯一标识、用户名、邮箱、密码等基本信息
 // 2. 权限控制：基于角色的访问控制（RBAC），支持管理员和普通用户
@@ -16,34 +17,34 @@ import (
 // 4. 安全特性：密码安全哈希、邮箱验证、登录历史记录
 // 5. 关联关系：与文章、分类、标签等业务实体的关联管理
 // 6. 审计支持：登录时间、登录次数、账户创建时间等审计信息
-// 
+//
 // 安全设计：
 // - UUID全局唯一标识，防止ID枚举攻击
 // - 密码使用bcrypt哈希，支持自动盐值生成
 // - 邮箱验证状态跟踪，支持安全验证流程
 // - 账户状态控制，支持管理员禁用违规账户
 // - 登录历史记录，支持异常登录检测
-// 
+//
 // 数据库设计：
 // - 用户名和邮箱唯一索引，确保数据一致性
 // - 密码字段JSON序列化时自动排除，防止泄露
 // - 支持软删除和硬删除两种模式
 // - 自动时间戳管理（创建时间、更新时间）
 // - 支持数据库迁移和版本控制
-// 
+//
 // 业务规则：
 // - 用户名长度限制：3-50字符
 // - 邮箱格式验证和唯一性检查
 // - 密码强度要求：至少8字符，包含大小写字母和数字
 // - 角色权限：admin（管理员）、user（普通用户）
 // - 账户状态：1（正常）、0（禁用）
-// 
+//
 // 性能优化：
 // - 关键字段建立数据库索引
 // - 支持关联查询预加载
 // - 密码验证使用常量时间比较
 // - 支持用户信息缓存
-// 
+//
 // 扩展性：
 // - 支持自定义用户属性扩展
 // - 支持多角色权限系统
@@ -51,19 +52,19 @@ import (
 // - 支持第三方登录集成
 type User struct {
 	BaseModel
-	UUID            string     `json:"uuid" gorm:"uniqueIndex;not null;size:36"`           // 用户唯一标识
-	Username        string     `json:"username" gorm:"uniqueIndex;not null;size:50"`       // 用户名
-	Email           string     `json:"email" gorm:"uniqueIndex;not null;size:100"`         // 邮箱地址
-	Password        string     `json:"-" gorm:"not null;size:255"`                         // 密码（不在JSON中返回）
-	Avatar          string     `json:"avatar" gorm:"size:255"`                             // 头像URL
-	Role            string     `json:"role" gorm:"default:'user';size:20"`                 // 用户角色
-	Status          int        `json:"status" gorm:"default:1"`                            // 用户状态：1-正常, 0-禁用
-	EmailVerifiedAt *time.Time `json:"email_verified_at" gorm:"index"`                     // 邮箱验证时间
-	LastLoginAt     *time.Time `json:"last_login_at" gorm:"index"`                         // 最后登录时间
-	LoginCount      int        `json:"login_count" gorm:"default:0"`                       // 登录次数
+	UUID            string     `json:"uuid" gorm:"unique;not null;size:36"`     // 用户唯一标识
+	Username        string     `json:"username" gorm:"unique;not null;size:50"` // 用户名
+	Email           string     `json:"email" gorm:"unique;not null;size:100"`   // 邮箱地址
+	Password        string     `json:"-" gorm:"not null;size:255"`              // 密码（不在JSON中返回）
+	Avatar          string     `json:"avatar" gorm:"size:255"`                  // 头像URL
+	Role            string     `json:"role" gorm:"default:'user';size:20"`      // 用户角色
+	Status          int        `json:"status" gorm:"default:1"`                 // 用户状态：1-正常, 0-禁用
+	EmailVerifiedAt *time.Time `json:"email_verified_at" gorm:"index"`          // 邮箱验证时间
+	LastLoginAt     *time.Time `json:"last_login_at" gorm:"index"`              // 最后登录时间
+	LoginCount      int        `json:"login_count" gorm:"default:0"`            // 登录次数
 
 	// 关联关系
-	Posts []Post `json:"posts,omitempty" gorm:"foreignKey:UserID"`                         // 用户发布的文章
+	Posts []Post `json:"posts,omitempty" gorm:"foreignKey:UserID"` // 用户发布的文章
 }
 
 // BeforeCreate 创建前的钩子
@@ -250,9 +251,9 @@ func (u *User) ValidatePassword(password string) bool {
 // 3. 包含登录次数、最后登录时间等信息
 func (u *User) GetLoginHistory() map[string]interface{} {
 	return map[string]interface{}{
-		"login_count":     u.LoginCount,
-		"last_login_at":   u.LastLoginAt,
-		"email_verified":  u.IsEmailVerified(),
-		"account_status":  u.GetStatusText(),
+		"login_count":    u.LoginCount,
+		"last_login_at":  u.LastLoginAt,
+		"email_verified": u.IsEmailVerified(),
+		"account_status": u.GetStatusText(),
 	}
 }

@@ -8,10 +8,10 @@
 
 **解决方案**:
 ```powershell
-# 方法1: 临时允许执行（推荐）
+# 临时允许执行（推荐）
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 
-# 方法2: 永久允许执行（需要管理员权限）
+# 永久允许执行（需要管理员权限）
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
@@ -40,147 +40,96 @@ cd "D:\project\local\cloud_platform\api\back"
 Test-Path "main.go"
 ```
 
-### 4. PowerShell版本过低
+### 4. 依赖缺失
 
-**错误信息**: 脚本语法错误或功能不支持
-
-**解决方案**:
-```powershell
-# 检查PowerShell版本
-$PSVersionTable.PSVersion
-
-# 如果版本低于5.0，建议升级到PowerShell 7
-# 下载地址: https://github.com/PowerShell/PowerShell/releases
-```
-
-### 5. 编码问题
-
-**错误信息**: 中文显示乱码
+**错误信息**: `command not found` 或 `未安装`
 
 **解决方案**:
-```powershell
-# 设置控制台编码
-chcp 65001
+```bash
+# 安装Go工具
+go install golang.org/x/tools/cmd/goimports@latest
+go install github.com/securecodewarrior/gosec/v2/cmd/gosec@latest
 
-# 或者在PowerShell中设置
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# 安装golangci-lint
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
 ```
 
 ## 🔧 分步诊断
 
 ### 步骤1: 环境检查
-```powershell
-# 检查PowerShell版本
-$PSVersionTable.PSVersion
-
-# 检查执行策略
-Get-ExecutionPolicy
+```bash
+# 检查Go版本
+go version
 
 # 检查当前目录
-Get-Location
+pwd
 
 # 检查项目文件
-Test-Path "main.go"
-Test-Path "go.mod"
+ls -la main.go go.mod
 ```
 
 ### 步骤2: 权限检查
-```powershell
-# 检查目录权限
-Get-Acl ".\storage" | Format-List
+```bash
+# 检查脚本权限
+ls -la scripts/*.sh
 
-# 尝试创建测试目录
-New-Item -ItemType Directory -Path ".\test" -Force
-Remove-Item ".\test" -Force
+# 添加执行权限
+chmod +x scripts/*.sh
 ```
 
 ### 步骤3: 脚本测试
-```powershell
-# 运行简单测试脚本
-.\scripts\test_setup.ps1
+```bash
+# 运行简单测试
+./scripts/code_quality.sh --help
 
 # 如果成功，再运行完整脚本
-.\scripts\setup_logging_directories.ps1 -Environment development
+./scripts/code_quality.sh
 ```
 
 ## 📋 快速修复命令
 
 ### 一键修复（复制粘贴运行）
-```powershell
-# 设置执行策略
-Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+```bash
+# 添加执行权限
+chmod +x scripts/*.sh
 
-# 切换到项目根目录（根据你的实际路径修改）
-cd "D:\project\local\cloud_platform\api\back"
+# 切换到项目根目录
+cd /path/to/your/project
 
 # 运行测试脚本
-.\scripts\test_setup.ps1
+./scripts/code_quality.sh
 ```
 
-### 手动创建日志目录
-```powershell
+### 手动创建必要目录
+```bash
 # 如果脚本仍然失败，可以手动创建
-$logPath = ".\storage\logs"
-New-Item -ItemType Directory -Path $logPath -Force
-
-# 创建基本目录
-@("requests", "sql", "errors", "audit", "security", "business", "access", "system") | ForEach-Object {
-    New-Item -ItemType Directory -Path "$logPath\$_" -Force
-}
+mkdir -p storage/logs
+mkdir -p storage/logs/{requests,sql,errors,audit,security,business,access,system}
 ```
 
 ## 🆘 获取帮助
 
 ### 1. 查看详细错误信息
-```powershell
+```bash
 # 添加详细输出参数
-.\scripts\setup_logging_directories.ps1 -Environment development -Verbose
+./scripts/code_quality.sh -v
 
-# 或者查看PowerShell错误详情
-$Error[0] | Format-List -Force
+# 或者查看错误详情
+echo $?
 ```
 
-### 2. 检查日志文件
-```powershell
-# 查看Windows事件日志
-Get-EventLog -LogName Application -Newest 10 | Where-Object {$_.Source -like "*PowerShell*"}
-
-# 查看PowerShell错误历史
-Get-History | Select-Object -Last 10
-```
-
-### 3. 常见问题检查清单
-- [ ] PowerShell版本 >= 5.0
-- [ ] 执行策略允许运行脚本
+### 2. 常见问题检查清单
+- [ ] Go环境已安装并配置PATH
 - [ ] 在项目根目录运行
-- [ ] 有足够的目录写入权限
+- [ ] 有足够的文件读写权限
 - [ ] 项目文件完整（main.go, go.mod等）
+- [ ] 必要的工具已安装
 
 ## 🔄 替代方案
 
-### 如果PowerShell脚本仍然失败
+### 如果脚本仍然失败
 
-#### 方案1: 使用批处理文件
-```cmd
-# 在cmd中运行
-scripts\setup_logging_directories.bat --env development
-```
-
-#### 方案2: 手动创建目录结构
-```cmd
-# 在cmd中运行
-mkdir storage\logs
-mkdir storage\logs\requests
-mkdir storage\logs\sql
-mkdir storage\logs\errors
-mkdir storage\logs\audit
-mkdir storage\logs\security
-mkdir storage\logs\business
-mkdir storage\logs\access
-mkdir storage\logs\system
-```
-
-#### 方案3: 使用Go代码创建
+#### 方案1: 使用Go代码创建
 ```go
 // 在main.go中添加
 package main
@@ -206,20 +155,25 @@ func main() {
 }
 ```
 
+#### 方案2: 手动创建目录结构
+```bash
+mkdir -p storage/logs
+mkdir -p storage/logs/requests
+mkdir -p storage/logs/sql
+mkdir -p storage/logs/errors
+mkdir -p storage/logs/audit
+mkdir -p storage/logs/security
+mkdir -p storage/logs/business
+mkdir -p storage/logs/access
+mkdir -p storage/logs/system
+```
+
 ## 📞 联系支持
 
 如果以上方法都无法解决问题，请提供以下信息：
 
 1. **错误信息**: 完整的错误文本
-2. **系统信息**: Windows版本、PowerShell版本
+2. **系统信息**: 操作系统版本、Go版本
 3. **运行环境**: 当前目录、项目路径
 4. **执行步骤**: 具体执行了什么命令
 5. **错误截图**: 如果有的话
-
-## 🎯 预防措施
-
-1. **定期更新**: 保持PowerShell和系统更新
-2. **权限管理**: 使用适当的用户权限运行脚本
-3. **路径规范**: 使用相对路径，避免硬编码绝对路径
-4. **错误处理**: 在脚本中添加适当的错误处理
-5. **备份配置**: 定期备份重要的配置文件

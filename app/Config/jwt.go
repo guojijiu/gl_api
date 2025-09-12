@@ -14,8 +14,13 @@ import (
 
 // JWTConfig JWT配置
 type JWTConfig struct {
-	Secret     string `mapstructure:"secret"`
-	ExpireTime int    `mapstructure:"expire_time"` // 过期时间（小时）
+	Secret                     string `mapstructure:"secret"`
+	SecretKey                  string `mapstructure:"secret_key"`
+	ExpireTime                 int    `mapstructure:"expire_time"`                   // 过期时间（小时）
+	ExpirationHours            int    `mapstructure:"expiration_hours"`              // 过期时间（小时）
+	Issuer                     string `mapstructure:"issuer"`                        // 签发者
+	RefreshWindowHours         int    `mapstructure:"refresh_window_hours"`          // 刷新窗口时间（小时）
+	RefreshTokenExpirationDays int    `mapstructure:"refresh_token_expiration_days"` // 刷新令牌过期时间（天）
 }
 
 // SetDefaults 设置JWT配置默认值
@@ -27,6 +32,10 @@ func (j *JWTConfig) SetDefaults() {
 	// 不设置JWT密钥默认值，强制用户通过环境变量配置
 	// 这样可以避免使用不安全的默认密钥
 	viper.SetDefault("jwt.expire_time", 24)
+	viper.SetDefault("jwt.expiration_hours", 24)
+	viper.SetDefault("jwt.issuer", "cloud-platform-api")
+	viper.SetDefault("jwt.refresh_window_hours", 168) // 7天
+	viper.SetDefault("jwt.refresh_token_expiration_days", 30)
 }
 
 // BindEnvs 绑定JWT环境变量
@@ -36,7 +45,12 @@ func (j *JWTConfig) SetDefaults() {
 // 3. 支持通过环境变量覆盖配置文件中的JWT设置
 func (j *JWTConfig) BindEnvs() {
 	viper.BindEnv("jwt.secret", "JWT_SECRET")
+	viper.BindEnv("jwt.secret_key", "JWT_SECRET_KEY")
 	viper.BindEnv("jwt.expire_time", "JWT_EXPIRE_TIME")
+	viper.BindEnv("jwt.expiration_hours", "JWT_EXPIRATION_HOURS")
+	viper.BindEnv("jwt.issuer", "JWT_ISSUER")
+	viper.BindEnv("jwt.refresh_window_hours", "JWT_REFRESH_WINDOW_HOURS")
+	viper.BindEnv("jwt.refresh_token_expiration_days", "JWT_REFRESH_TOKEN_EXPIRATION_DAYS")
 }
 
 // GetJWTConfig 获取JWT配置
@@ -57,7 +71,12 @@ func GetJWTConfig() *JWTConfig {
 // 2. 用于JWT token的过期时间计算
 // 3. 返回time.Duration格式的过期时间
 func (j *JWTConfig) GetExpireDuration() time.Duration {
-	return time.Duration(j.ExpireTime) * time.Hour
+	// 优先使用 ExpirationHours，如果没有则使用 ExpireTime
+	hours := j.ExpirationHours
+	if hours == 0 {
+		hours = j.ExpireTime
+	}
+	return time.Duration(hours) * time.Hour
 }
 
 // GetExpireTime 获取过期时间（秒）
@@ -66,13 +85,24 @@ func (j *JWTConfig) GetExpireDuration() time.Duration {
 // 2. 用于JWT token的过期时间计算
 // 3. 返回int64格式的过期时间（秒）
 func (j *JWTConfig) GetExpireTime() int64 {
-	return int64(j.ExpireTime * 3600)
+	// 优先使用 ExpirationHours，如果没有则使用 ExpireTime
+	hours := j.ExpirationHours
+	if hours == 0 {
+		hours = j.ExpireTime
+	}
+	return int64(hours * 3600)
 }
 
 // Validate 验证JWT配置
 func (j *JWTConfig) Validate() error {
-	if j.Secret == "" {
-		return fmt.Errorf("JWT密钥未配置，请设置JWT_SECRET环境变量")
+	// 优先使用 SecretKey，如果没有则使用 Secret
+	secret := j.SecretKey
+	if secret == "" {
+		secret = j.Secret
+	}
+
+	if secret == "" {
+		return fmt.Errorf("JWT密钥未配置，请设置JWT_SECRET或JWT_SECRET_KEY环境变量")
 	}
 
 	// 检查是否为不安全的默认密钥
@@ -81,8 +111,8 @@ func (j *JWTConfig) Validate() error {
 	}
 
 	// 检查密钥长度
-	if len(j.Secret) < 32 {
-		return fmt.Errorf("JWT密钥长度不足，建议至少32个字符，当前长度: %d", len(j.Secret))
+	if len(secret) < 32 {
+		return fmt.Errorf("JWT密钥长度不足，建议至少32个字符，当前长度: %d", len(secret))
 	}
 
 	// 检查密钥复杂度
@@ -108,7 +138,10 @@ func (j *JWTConfig) Validate() error {
 
 // validateSecretComplexity 验证密钥复杂度
 func (j *JWTConfig) validateSecretComplexity() error {
-	secret := j.Secret
+	secret := j.SecretKey
+	if secret == "" {
+		secret = j.Secret
+	}
 
 	// 检查是否包含大小写字母
 	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(secret)
@@ -157,7 +190,11 @@ func (j *JWTConfig) hasRepeatedChars(secret string) bool {
 
 // isWeakSecret 检查是否为弱密钥
 func (j *JWTConfig) isWeakSecret() bool {
-	secret := strings.ToLower(j.Secret)
+	secret := j.SecretKey
+	if secret == "" {
+		secret = j.Secret
+	}
+	secret = strings.ToLower(secret)
 
 	// 常见弱密钥列表（只检查完整的弱密钥，不检查包含关系）
 	weakSecrets := []string{
@@ -220,6 +257,11 @@ func (j *JWTConfig) IsSecretDefault() bool {
 
 // isDefaultSecret 检查是否为不安全的默认密钥
 func (j *JWTConfig) isDefaultSecret() bool {
+	secret := j.SecretKey
+	if secret == "" {
+		secret = j.Secret
+	}
+
 	defaultSecrets := []string{
 		"your-secret-key",
 		"your-super-secret-jwt-key-change-in-production",
@@ -234,7 +276,7 @@ func (j *JWTConfig) isDefaultSecret() bool {
 	}
 
 	for _, defaultSecret := range defaultSecrets {
-		if j.Secret == defaultSecret {
+		if secret == defaultSecret {
 			return true
 		}
 	}
@@ -287,7 +329,10 @@ func (j *JWTConfig) ValidateProductionConfig() error {
 
 // GetSecretStrength 获取密钥强度评分
 func (j *JWTConfig) GetSecretStrength() int {
-	secret := j.Secret
+	secret := j.SecretKey
+	if secret == "" {
+		secret = j.Secret
+	}
 	score := 0
 
 	// 长度评分 (0-40分)

@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Database"
 	"cloud-platform-api/app/Storage"
 	"cloud-platform-api/tests/testsetup"
@@ -50,23 +51,26 @@ func (ts *TestSuite) SetupSuite() {
 	os.Setenv("DB_DRIVER", "sqlite")
 	os.Setenv("DB_DATABASE", ":memory:")
 	os.Setenv("JWT_SECRET", "test-jwt-secret-key-for-testing-only-32-chars")
-	
+
 	// 初始化存储管理器
 	storagePath := "./storage/test"
-	ts.storageManager = Storage.NewStorageManager(storagePath)
-	
+	storageConfig := &Config.StorageConfig{
+		BasePath: storagePath,
+	}
+	ts.storageManager = Storage.NewStorageManager(storageConfig)
+
 	// 初始化数据库
 	Database.InitDBWithLogger(ts.storageManager)
-	
+
 	// 运行数据库迁移
 	Database.AutoMigrate()
-	
+
 	// 初始化TokenHelper
 	ts.tokenHelper = testsetup.NewTokenHelper()
-	
+
 	// 创建上下文
 	ts.ctx, ts.cancel = context.WithTimeout(context.Background(), 30*time.Second)
-	
+
 	log.Println("测试套件初始化完成")
 }
 
@@ -83,22 +87,22 @@ func (ts *TestSuite) TearDownSuite() {
 			log.Printf("清理测试用户失败: %v", err)
 		}
 	}
-	
+
 	// 关闭数据库连接
 	if err := Database.CloseDB(); err != nil {
 		log.Printf("关闭数据库连接失败: %v", err)
 	}
-	
+
 	// 取消上下文
 	if ts.cancel != nil {
 		ts.cancel()
 	}
-	
+
 	// 清理测试存储目录
 	if err := os.RemoveAll("./storage/test"); err != nil {
 		log.Printf("清理测试存储目录失败: %v", err)
 	}
-	
+
 	log.Println("测试套件清理完成")
 }
 
@@ -110,7 +114,7 @@ func (ts *TestSuite) TearDownSuite() {
 func (ts *TestSuite) SetupTest() {
 	// 清理数据库表
 	ts.cleanupDatabase()
-	
+
 	// 清理测试文件
 	ts.cleanupTestFiles()
 }
@@ -143,7 +147,7 @@ func (ts *TestSuite) cleanupTestFiles() {
 		"./storage/test/temp",
 		"./storage/test/logs",
 	}
-	
+
 	for _, dir := range testDirs {
 		if err := os.RemoveAll(dir); err != nil {
 			log.Printf("清理测试目录 %s 失败: %v", dir, err)
@@ -164,7 +168,7 @@ func (ts *TestSuite) CreateTestUser(username, email, password string) map[string
 		"role":     "user",
 		"status":   1,
 	}
-	
+
 	return userData
 }
 
@@ -178,7 +182,7 @@ func (ts *TestSuite) CreateTestUserWithToken(username, email, password, role str
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &testsetup.UserTokenInfo{
 		User:  user,
 		Token: token,
@@ -191,7 +195,7 @@ func (ts *TestSuite) CreateAdminUserWithToken() (*testsetup.UserTokenInfo, error
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &testsetup.UserTokenInfo{
 		User:  user,
 		Token: token,
@@ -204,7 +208,7 @@ func (ts *TestSuite) CreateNormalUserWithToken() (*testsetup.UserTokenInfo, erro
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &testsetup.UserTokenInfo{
 		User:  user,
 		Token: token,
@@ -239,12 +243,12 @@ func (ts *TestSuite) ValidateToken(token string) error {
 // 3. 支持自定义文章属性
 func (ts *TestSuite) CreateTestPost(title, content string, userID uint) map[string]interface{} {
 	postData := map[string]interface{}{
-		"title":    title,
-		"content":  content,
-		"user_id":  userID,
-		"status":   1,
+		"title":   title,
+		"content": content,
+		"user_id": userID,
+		"status":  1,
 	}
-	
+
 	return postData
 }
 

@@ -113,167 +113,80 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	})
 
 	// 认证相关路由
+	authController := Controllers.NewAuthController()
 	authGroup := v1.Group("/auth")
 	{
-		authGroup.POST("/register", func(c *gin.Context) {
-			// 用户注册
-			c.JSON(200, gin.H{"message": "注册功能待实现"})
-		})
-		authGroup.POST("/login", func(c *gin.Context) {
-			// 用户登录
-			c.JSON(200, gin.H{"message": "登录功能待实现"})
-		})
-		authGroup.POST("/logout", func(c *gin.Context) {
-			// 用户登出
-			c.JSON(200, gin.H{"message": "登出功能待实现"})
-		})
-		authGroup.POST("/refresh", func(c *gin.Context) {
-			// 刷新token
-			c.JSON(200, gin.H{"message": "刷新token功能待实现"})
-		})
+		authGroup.POST("/register", authController.Register)
+		authGroup.POST("/login", authController.Login)
+		authGroup.POST("/logout", authController.Logout)
+		authGroup.POST("/refresh", authController.RefreshToken)
 	}
 
 	// 用户管理路由
+	userController := Controllers.NewUserController()
 	userGroup := v1.Group("/users")
 	{
-		userGroup.GET("/", func(c *gin.Context) {
-			// 获取用户列表
-			c.JSON(200, gin.H{"message": "获取用户列表功能待实现"})
-		})
-		userGroup.GET("/:id", func(c *gin.Context) {
-			// 获取单个用户
-			c.JSON(200, gin.H{"message": "获取用户详情功能待实现"})
-		})
-		userGroup.PUT("/:id", func(c *gin.Context) {
-			// 更新用户信息
-			c.JSON(200, gin.H{"message": "更新用户信息功能待实现"})
-		})
-		userGroup.DELETE("/:id", func(c *gin.Context) {
-			// 删除用户
-			c.JSON(200, gin.H{"message": "删除用户功能待实现"})
-		})
+		userGroup.GET("/", userController.GetUsers)
+		userGroup.GET("/:id", userController.GetUser)
+		userGroup.PUT("/:id", userController.UpdateUser)
+		userGroup.DELETE("/:id", userController.DeleteUser)
 	}
 
 	// 文章管理路由
+	postController := Controllers.NewPostController()
 	postGroup := v1.Group("/posts")
 	{
-		postGroup.GET("/", func(c *gin.Context) {
-			// 获取文章列表
-			c.JSON(200, gin.H{"message": "获取文章列表功能待实现"})
-		})
-		postGroup.GET("/:id", func(c *gin.Context) {
-			// 获取单个文章
-			c.JSON(200, gin.H{"message": "获取文章详情功能待实现"})
-		})
-		postGroup.POST("/", func(c *gin.Context) {
-			// 创建文章
-			c.JSON(200, gin.H{"message": "创建文章功能待实现"})
-		})
-		postGroup.PUT("/:id", func(c *gin.Context) {
-			// 更新文章
-			c.JSON(200, gin.H{"message": "更新文章功能待实现"})
-		})
-		postGroup.DELETE("/:id", func(c *gin.Context) {
-			// 删除文章
-			c.JSON(200, gin.H{"message": "删除文章功能待实现"})
-		})
+		postGroup.GET("/", postController.GetPosts)
+		postGroup.GET("/:id", postController.GetPost)
+		postGroup.POST("/", postController.CreatePost)
+		postGroup.PUT("/:id", postController.UpdatePost)
+		postGroup.DELETE("/:id", postController.DeletePost)
 	}
 
 	// 分类管理路由
+	categoryController := Controllers.NewCategoryController()
 	categoryGroup := v1.Group("/categories")
 	{
-		categoryGroup.GET("/", func(c *gin.Context) {
-			// 获取分类列表
-			c.JSON(200, gin.H{"message": "获取分类列表功能待实现"})
-		})
-		categoryGroup.GET("/:id", func(c *gin.Context) {
-			// 获取单个分类
-			c.JSON(200, gin.H{"message": "获取分类详情功能待实现"})
-		})
-		categoryGroup.POST("/", func(c *gin.Context) {
-			// 创建分类
-			c.JSON(200, gin.H{"message": "创建分类功能待实现"})
-		})
-		categoryGroup.PUT("/:id", func(c *gin.Context) {
-			// 更新分类
-			c.JSON(200, gin.H{"message": "更新分类功能待实现"})
-		})
-		categoryGroup.DELETE("/:id", func(c *gin.Context) {
-			// 删除分类
-			c.JSON(200, gin.H{"message": "删除分类功能待实现"})
-		})
+		categoryGroup.GET("/", categoryController.GetCategories)
+		categoryGroup.GET("/:id", categoryController.GetCategory)
+		categoryGroup.POST("/", categoryController.CreateCategory)
+		categoryGroup.PUT("/:id", categoryController.UpdateCategory)
+		categoryGroup.DELETE("/:id", categoryController.DeleteCategory)
 	}
 
 	// 标签管理路由
+	tagController := Controllers.NewTagController()
 	tagGroup := v1.Group("/tags")
 	{
-		tagGroup.GET("/", func(c *gin.Context) {
-			// 获取标签列表
-			c.JSON(200, gin.H{"message": "获取标签列表功能待实现"})
-		})
-		tagGroup.GET("/:id", func(c *gin.Context) {
-			// 获取单个标签
-			c.JSON(200, gin.H{"message": "获取标签详情功能待实现"})
-		})
-		tagGroup.POST("/", func(c *gin.Context) {
-			// 创建标签
-			c.JSON(200, gin.H{"message": "创建标签功能待实现"})
-		})
-		tagGroup.PUT("/:id", func(c *gin.Context) {
-			// 更新标签
-			c.JSON(200, gin.H{"message": "更新标签功能待实现"})
-		})
-		tagGroup.DELETE("/:id", func(c *gin.Context) {
-			// 删除标签
-			c.JSON(200, gin.H{"message": "删除标签功能待实现"})
-		})
+		tagGroup.GET("/", tagController.GetTags)
+		tagGroup.GET("/:id", tagController.GetTag)
+		tagGroup.POST("/", tagController.CreateTag)
+		tagGroup.PUT("/:id", tagController.UpdateTag)
+		tagGroup.DELETE("/:id", tagController.DeleteTag)
 	}
 
 	// 管理员路由
+	adminController := Controllers.NewAdminController()
 	adminGroup := v1.Group("/admin")
 	{
-		adminGroup.GET("/dashboard", func(c *gin.Context) {
-			// 管理员仪表板
-			c.JSON(200, gin.H{"message": "管理员仪表板功能待实现"})
-		})
-		adminGroup.GET("/users", func(c *gin.Context) {
-			// 管理员用户管理
-			c.JSON(200, gin.H{"message": "管理员用户管理功能待实现"})
-		})
-		adminGroup.GET("/posts", func(c *gin.Context) {
-			// 管理员文章管理
-			c.JSON(200, gin.H{"message": "管理员文章管理功能待实现"})
-		})
-		adminGroup.GET("/logs", func(c *gin.Context) {
-			// 管理员日志查看
-			c.JSON(200, gin.H{"message": "管理员日志查看功能待实现"})
-		})
+		adminGroup.GET("/dashboard", adminController.Dashboard)
+		adminGroup.GET("/stats", adminController.Stats)
 	}
 
 	// 监控路由
+	monitoringController := Controllers.NewMonitoringController()
 	monitoringGroup := v1.Group("/monitoring")
 	{
-		monitoringGroup.GET("/metrics", func(c *gin.Context) {
-			// 获取监控指标
-			c.JSON(200, gin.H{"message": "监控指标功能待实现"})
-		})
-		monitoringGroup.GET("/health", func(c *gin.Context) {
-			// 健康检查
-			c.JSON(200, gin.H{"message": "健康检查功能待实现"})
-		})
-		monitoringGroup.GET("/performance", func(c *gin.Context) {
-			// 性能监控
-			c.JSON(200, gin.H{"message": "性能监控功能待实现"})
-		})
+		monitoringGroup.GET("/metrics", monitoringController.GetMetrics)
+		monitoringGroup.GET("/health", monitoringController.GetSystemHealth)
+		monitoringGroup.GET("/alerts", monitoringController.GetAlerts)
 	}
 
 	// WebSocket路由
+	wsController := Controllers.NewWebSocketController()
 	wsGroup := v1.Group("/ws")
 	{
-		wsGroup.GET("/", func(c *gin.Context) {
-			// WebSocket连接
-			c.JSON(200, gin.H{"message": "WebSocket功能待实现"})
-		})
+		wsGroup.GET("/", wsController.Connect)
 	}
 
 	// 记录路由注册完成日志

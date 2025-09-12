@@ -1,6 +1,7 @@
 package Config
 
 import (
+	"net/http"
 	"time"
 )
 
@@ -45,56 +46,70 @@ func (e *ConfigError) Error() string {
 // - StatisticsInterval: 统计信息收集间隔
 type WebSocketConfig struct {
 	// 基础连接配置
-	ReadBufferSize   int           `json:"read_buffer_size" yaml:"read_buffer_size"`
-	WriteBufferSize  int           `json:"write_buffer_size" yaml:"write_buffer_size"`
-	PingPeriod       time.Duration `json:"ping_period" yaml:"ping_period"`
-	PongWait         time.Duration `json:"pong_wait" yaml:"pong_wait"`
-	WriteWait        time.Duration `json:"write_wait" yaml:"write_wait"`
-	MaxMessageSize   int64         `json:"max_message_size" yaml:"max_message_size"`
-	EnableCompression bool         `json:"enable_compression" yaml:"enable_compression"`
-	
+	Enabled           bool          `json:"enabled" yaml:"enabled"`
+	Port              int           `json:"port" yaml:"port"`
+	ReadBufferSize    int           `json:"read_buffer_size" yaml:"read_buffer_size"`
+	WriteBufferSize   int           `json:"write_buffer_size" yaml:"write_buffer_size"`
+	PingPeriod        time.Duration `json:"ping_period" yaml:"ping_period"`
+	PongWait          time.Duration `json:"pong_wait" yaml:"pong_wait"`
+	WriteWait         time.Duration `json:"write_wait" yaml:"write_wait"`
+	MaxMessageSize    int64         `json:"max_message_size" yaml:"max_message_size"`
+	EnableCompression bool          `json:"enable_compression" yaml:"enable_compression"`
+
 	// 连接管理配置
-	MaxConnections   int           `json:"max_connections" yaml:"max_connections"`
-	EnableRateLimit  bool          `json:"enable_rate_limit" yaml:"enable_rate_limit"`
-	RateLimitPerMinute int         `json:"rate_limit_per_minute" yaml:"rate_limit_per_minute"`
-	
+	CheckOrigin      func(r *http.Request) bool `json:"-" yaml:"-"`
+	HandshakeTimeout time.Duration              `json:"handshake_timeout" yaml:"handshake_timeout"`
+	ReadDeadline     time.Duration              `json:"read_deadline" yaml:"read_deadline"`
+	WriteDeadline    time.Duration              `json:"write_deadline" yaml:"write_deadline"`
+
+	// 连接管理配置
+	MaxConnections     int  `json:"max_connections" yaml:"max_connections"`
+	EnableRateLimit    bool `json:"enable_rate_limit" yaml:"enable_rate_limit"`
+	RateLimitPerMinute int  `json:"rate_limit_per_minute" yaml:"rate_limit_per_minute"`
+
 	// 安全配置
-	EnableIPWhitelist bool         `json:"enable_ip_whitelist" yaml:"enable_ip_whitelist"`
-	IPWhitelist       []string     `json:"ip_whitelist" yaml:"ip_whitelist"`
-	EnableOriginCheck bool         `json:"enable_origin_check" yaml:"enable_origin_check"`
-	AllowedOrigins    []string     `json:"allowed_origins" yaml:"allowed_origins"`
-	
+	EnableIPWhitelist bool     `json:"enable_ip_whitelist" yaml:"enable_ip_whitelist"`
+	IPWhitelist       []string `json:"ip_whitelist" yaml:"ip_whitelist"`
+	EnableOriginCheck bool     `json:"enable_origin_check" yaml:"enable_origin_check"`
+	AllowedOrigins    []string `json:"allowed_origins" yaml:"allowed_origins"`
+
 	// 房间管理配置
-	EnableRoomLimit   bool         `json:"enable_room_limit" yaml:"enable_room_limit"`
-	MaxRooms          int          `json:"max_rooms" yaml:"max_rooms"`
-	DefaultRooms      []string     `json:"default_rooms" yaml:"default_rooms"`
-	
+	EnableRoomLimit bool     `json:"enable_room_limit" yaml:"enable_room_limit"`
+	MaxRooms        int      `json:"max_rooms" yaml:"max_rooms"`
+	DefaultRooms    []string `json:"default_rooms" yaml:"default_rooms"`
+
 	// 消息管理配置
-	EnableMessagePersistence bool   `json:"enable_message_persistence" yaml:"enable_message_persistence"`
-	MessageRetentionDays     int    `json:"message_retention_days" yaml:"message_retention_days"`
-	MaxMessageLength         int    `json:"max_message_length" yaml:"max_message_length"`
-	EnableMessageFilter      bool   `json:"enable_message_filter" yaml:"enable_message_filter"`
-	
+	EnableMessagePersistence bool `json:"enable_message_persistence" yaml:"enable_message_persistence"`
+	MessageRetentionDays     int  `json:"message_retention_days" yaml:"message_retention_days"`
+	MaxMessageLength         int  `json:"max_message_length" yaml:"max_message_length"`
+	EnableMessageFilter      bool `json:"enable_message_filter" yaml:"enable_message_filter"`
+
 	// 用户状态配置
-	EnableUserStatus         bool   `json:"enable_user_status" yaml:"enable_user_status"`
-	UserStatusTimeout        time.Duration `json:"user_status_timeout" yaml:"user_status_timeout"`
-	EnableUserPresence       bool   `json:"enable_user_presence" yaml:"enable_user_presence"`
-	
+	EnableUserStatus   bool          `json:"enable_user_status" yaml:"enable_user_status"`
+	UserStatusTimeout  time.Duration `json:"user_status_timeout" yaml:"user_status_timeout"`
+	EnableUserPresence bool          `json:"enable_user_presence" yaml:"enable_user_presence"`
+
 	// 统计和监控配置
-	EnableStatistics         bool   `json:"enable_statistics" yaml:"enable_statistics"`
+	EnableStatistics         bool          `json:"enable_statistics" yaml:"enable_statistics"`
 	StatisticsInterval       time.Duration `json:"statistics_interval" yaml:"statistics_interval"`
-	EnablePerformanceMetrics bool   `json:"enable_performance_metrics" yaml:"enable_performance_metrics"`
-	EnableAlerts             bool   `json:"enable_alerts" yaml:"enable_alerts"`
-	
+	EnablePerformanceMetrics bool          `json:"enable_performance_metrics" yaml:"enable_performance_metrics"`
+	EnableAlerts             bool          `json:"enable_alerts" yaml:"enable_alerts"`
+
 	// 高级功能配置
-	EnableLoadBalancing      bool   `json:"enable_load_balancing" yaml:"enable_load_balancing"`
-	EnableMessageQueue       bool   `json:"enable_message_queue" yaml:"enable_message_queue"`
-	EnableMessageBroadcast   bool   `json:"enable_message_broadcast" yaml:"enable_message_broadcast"`
-	EnablePrivateMessaging   bool   `json:"enable_private_messaging" yaml:"enable_private_messaging"`
+	EnableLoadBalancing    bool `json:"enable_load_balancing" yaml:"enable_load_balancing"`
+	EnableMessageQueue     bool `json:"enable_message_queue" yaml:"enable_message_queue"`
+	EnableMessageBroadcast bool `json:"enable_message_broadcast" yaml:"enable_message_broadcast"`
+	EnablePrivateMessaging bool `json:"enable_private_messaging" yaml:"enable_private_messaging"`
 }
 
 // SetDefaults 设置默认值
 func (c *WebSocketConfig) SetDefaults() {
+	if c.Enabled == false {
+		c.Enabled = true
+	}
+	if c.Port == 0 {
+		c.Port = 8081
+	}
 	if c.ReadBufferSize == 0 {
 		c.ReadBufferSize = 1024
 	}
@@ -109,6 +124,15 @@ func (c *WebSocketConfig) SetDefaults() {
 	}
 	if c.WriteWait == 0 {
 		c.WriteWait = 10 * time.Second
+	}
+	if c.HandshakeTimeout == 0 {
+		c.HandshakeTimeout = 10 * time.Second
+	}
+	if c.ReadDeadline == 0 {
+		c.ReadDeadline = 60 * time.Second
+	}
+	if c.WriteDeadline == 0 {
+		c.WriteDeadline = 10 * time.Second
 	}
 	if c.MaxMessageSize == 0 {
 		c.MaxMessageSize = 512
@@ -235,7 +259,7 @@ func (c *WebSocketConfig) Validate() error {
 	if c.StatisticsInterval <= 0 {
 		return &ConfigError{Field: "StatisticsInterval", Message: "统计间隔必须大于0"}
 	}
-	
+
 	return nil
 }
 

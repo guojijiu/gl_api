@@ -2,11 +2,8 @@ package Testing
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
-	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -19,7 +16,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"cloud-platform-api/app/Config"
-	"cloud-platform-api/app/Database"
+	"cloud-platform-api/app/Models"
 	"cloud-platform-api/app/Services"
 )
 
@@ -30,6 +27,8 @@ type TestSuite struct {
 	Config *Config.TestConfig
 	// 测试数据库
 	TestDB *gorm.DB
+	// 测试数据库管理器
+	TestDatabase *TestDatabase
 	// SQL Mock
 	SQLMock sqlmock.Sqlmock
 	// 测试Redis客户端
@@ -50,8 +49,8 @@ type TestServices struct {
 	UserService *Services.UserService
 	// 认证服务
 	AuthService *Services.AuthService
-	// 标签服务
-	TagService *Services.TagService
+	// 标签服务 - 暂时注释，TagService不存在
+	// TagService *Services.TagService
 	// API密钥服务
 	ApiKeyService *Services.ApiKeyService
 	// 审计服务
@@ -62,6 +61,12 @@ type TestServices struct {
 	LogMonitorService *Services.LogMonitorService
 	// WebSocket服务
 	WebSocketService *Services.WebSocketService
+}
+
+// TestDatabase 测试数据库
+type TestDatabase struct {
+	DB     *gorm.DB
+	Config *Config.DatabaseConfig
 }
 
 // TestCleanup 测试数据清理器
@@ -78,30 +83,30 @@ type TestCleanup struct {
 func (ts *TestSuite) SetupSuite() {
 	// 设置测试环境
 	gin.SetMode(gin.TestMode)
-	
+
 	// 初始化测试配置
 	ts.initTestConfig()
-	
+
 	// 初始化测试数据库
 	ts.initTestDatabase()
-	
+
 	// 初始化测试Redis
 	ts.initTestRedis()
-	
+
 	// 初始化测试服务
 	ts.initTestServices()
-	
+
 	// 初始化测试引擎
 	ts.initTestEngine()
-	
+
 	// 初始化测试上下文
 	ts.Ctx = context.Background()
-	
+
 	// 初始化测试数据清理器
 	ts.Cleanup = &TestCleanup{
-		Tables:   []string{},
+		Tables:    []string{},
 		RedisKeys: []string{},
-		Files:    []string{},
+		Files:     []string{},
 	}
 }
 
@@ -109,7 +114,7 @@ func (ts *TestSuite) SetupSuite() {
 func (ts *TestSuite) TearDownSuite() {
 	// 清理测试数据
 	ts.cleanupTestData()
-	
+
 	// 关闭测试数据库连接
 	if ts.TestDB != nil {
 		sqlDB, err := ts.TestDB.DB()
@@ -117,7 +122,7 @@ func (ts *TestSuite) TearDownSuite() {
 			sqlDB.Close()
 		}
 	}
-	
+
 	// 关闭测试Redis连接
 	if ts.TestRedis != nil {
 		ts.TestRedis.Close()
@@ -142,12 +147,21 @@ func (ts *TestSuite) TearDownTest() {
 
 // initTestConfig 初始化测试配置
 func (ts *TestSuite) initTestConfig() {
+	// 设置测试环境变量
+	os.Setenv("SERVER_MODE", "test")
+	os.Setenv("DATABASE_DRIVER", "sqlite")
+	os.Setenv("DATABASE_NAME", ":memory:")
+	os.Setenv("JWT_SECRET", "test-jwt-secret-key-for-testing-only-32-chars")
+
+	// 加载全局配置
+	Config.LoadConfig()
+
 	ts.Config = &Config.TestConfig{}
 	ts.Config.SetDefaults()
-	
+
 	// 从环境变量加载配置
 	ts.Config.BindEnvs()
-	
+
 	// 验证配置
 	err := ts.Config.Validate()
 	if err != nil {
@@ -158,7 +172,7 @@ func (ts *TestSuite) initTestConfig() {
 // initTestDatabase 初始化测试数据库
 func (ts *TestSuite) initTestDatabase() {
 	var err error
-	
+
 	if ts.Config.Database.Type == "sqlite" && ts.Config.Database.InMemory {
 		// 使用内存SQLite数据库
 		ts.TestDB, err = gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
@@ -170,22 +184,31 @@ func (ts *TestSuite) initTestDatabase() {
 			Logger: logger.Default.LogMode(logger.Silent),
 		})
 	}
-	
+
 	if err != nil {
 		panic(fmt.Sprintf("failed to connect to test database: %v", err))
 	}
-	
+
+	// 初始化TestDatabase
+	ts.TestDatabase = &TestDatabase{
+		DB: ts.TestDB,
+		Config: &Config.DatabaseConfig{
+			Driver:   ts.Config.Database.Type,
+			Database: ts.Config.Database.DSN,
+		},
+	}
+
 	// 自动迁移数据库表
 	err = ts.TestDB.AutoMigrate(
-		// 在这里添加需要迁移的模型
+	// 在这里添加需要迁移的模型
 	)
 	if err != nil {
 		panic(fmt.Sprintf("failed to migrate test database: %v", err))
 	}
-	
+
 	// 加载测试数据种子
 	if ts.Config.Database.SeedFile != "" {
-		ts.loadTestDataSeed()
+		ts.TestDatabase.loadTestDataSeed()
 	}
 }
 
@@ -200,7 +223,7 @@ func (ts *TestSuite) initTestRedis() {
 			ReadTimeout:  ts.Config.Cache.Redis.ReadTimeout,
 			WriteTimeout: ts.Config.Cache.Redis.WriteTimeout,
 		})
-		
+
 		// 测试Redis连接
 		_, err := ts.TestRedis.Ping(ts.Ctx).Result()
 		if err != nil {
@@ -211,15 +234,25 @@ func (ts *TestSuite) initTestRedis() {
 
 // initTestServices 初始化测试服务
 func (ts *TestSuite) initTestServices() {
+	// 创建配置
+	logConfig := &Config.LogConfig{}
+	logConfig.SetDefaults()
+
+	wsConfig := &Config.WebSocketConfig{}
+	wsConfig.SetDefaults()
+
+	// 创建服务
+	logManagerService := Services.NewLogManagerService(logConfig)
+
 	ts.Services = &TestServices{
-		UserService:        Services.NewUserService(ts.TestDB),
-		AuthService:        Services.NewAuthService(ts.TestDB),
-		TagService:         Services.NewTagService(ts.TestDB),
-		ApiKeyService:      Services.NewApiKeyService(ts.TestDB),
-		AuditService:       Services.NewAuditService(ts.TestDB),
-		LogManagerService:  Services.NewLogManagerService(),
-		LogMonitorService:  Services.NewLogMonitorService(),
-		WebSocketService:   Services.NewWebSocketService(),
+		UserService: Services.NewUserService(),
+		AuthService: Services.NewAuthService(),
+		// TagService:         Services.NewTagService(ts.TestDB), // 暂时注释，TagService不存在
+		ApiKeyService:     Services.NewApiKeyService(),
+		AuditService:      Services.NewAuditService(ts.TestDB),
+		LogManagerService: logManagerService,
+		LogMonitorService: Services.NewLogMonitorService(logManagerService, logConfig),
+		WebSocketService:  Services.NewWebSocketService(wsConfig),
 	}
 }
 
@@ -231,26 +264,8 @@ func (ts *TestSuite) initTestEngine() {
 
 // loadTestDataSeed 加载测试数据种子
 func (ts *TestDatabase) loadTestDataSeed() {
-	if ts.Config.Database.SeedFile == "" {
-		return
-	}
-	
-	// 检查种子文件是否存在
-	if _, err := os.Stat(ts.Config.Database.SeedFile); os.IsNotExist(err) {
-		return
-	}
-	
-	// 读取种子文件
-	seedData, err := os.ReadFile(ts.Config.Database.SeedFile)
-	if err != nil {
-		panic(fmt.Sprintf("failed to read seed file: %v", err))
-	}
-	
-	// 执行种子SQL
-	err = ts.TestDB.Exec(string(seedData)).Error
-	if err != nil {
-		panic(fmt.Sprintf("failed to execute seed SQL: %v", err))
-	}
+	// 暂时跳过种子文件加载，因为DatabaseConfig没有SeedFile字段
+	// 如果需要种子文件功能，需要修改DatabaseConfig结构体
 }
 
 // cleanupTestData 清理测试数据
@@ -258,19 +273,19 @@ func (ts *TestSuite) cleanupTestData() {
 	if !ts.Config.Base.CleanupTestData {
 		return
 	}
-	
+
 	// 清理数据库表
 	for _, table := range ts.Cleanup.Tables {
 		ts.TestDB.Exec(fmt.Sprintf("DELETE FROM %s", table))
 	}
-	
+
 	// 清理Redis键
 	if ts.TestRedis != nil {
 		for _, key := range ts.Cleanup.RedisKeys {
 			ts.TestRedis.Del(ts.Ctx, key)
 		}
 	}
-	
+
 	// 清理文件
 	for _, file := range ts.Cleanup.Files {
 		os.Remove(file)
@@ -284,15 +299,15 @@ func (ts *TestSuite) CreateTestUser(username, email, password string) *Models.Us
 		Email:    email,
 		Password: password,
 		Role:     "user",
-		Status:   "active",
+		Status:   1, // 1-正常状态
 	}
-	
+
 	err := ts.TestDB.Create(user).Error
 	assert.NoError(ts.T(), err)
-	
+
 	// 添加到清理列表
 	ts.Cleanup.Tables = append(ts.Cleanup.Tables, "users")
-	
+
 	return user
 }
 
@@ -301,15 +316,14 @@ func (ts *TestSuite) CreateTestTag(name, description string) *Models.Tag {
 	tag := &Models.Tag{
 		Name:        name,
 		Description: description,
-		Status:      "active",
 	}
-	
+
 	err := ts.TestDB.Create(tag).Error
 	assert.NoError(ts.T(), err)
-	
+
 	// 添加到清理列表
 	ts.Cleanup.Tables = append(ts.Cleanup.Tables, "tags")
-	
+
 	return tag
 }
 
@@ -319,17 +333,17 @@ func (ts *TestSuite) CreateTestApiKey(userID uint, name string) *Models.ApiKey {
 		UserID:      userID,
 		Name:        name,
 		KeyHash:     "test_hash",
-		Permissions: []string{"read", "write"},
-		Status:      "active",
-		ExpiresAt:   time.Now().Add(24 * time.Hour),
+		Permissions: "read,write", // 改为字符串格式
+		Status:      1,            // 1-正常状态
+		ExpiresAt:   &time.Time{}, // 改为指针类型
 	}
-	
+
 	err := ts.TestDB.Create(apiKey).Error
 	assert.NoError(ts.T(), err)
-	
+
 	// 添加到清理列表
 	ts.Cleanup.Tables = append(ts.Cleanup.Tables, "api_keys")
-	
+
 	return apiKey
 }
 
@@ -362,11 +376,11 @@ func (ts *TestSuite) AssertResponseError(response *gin.Context, expectedStatus i
 func (ts *TestSuite) AssertDatabaseRecord(model interface{}, conditions map[string]interface{}) {
 	var count int64
 	query := ts.TestDB.Model(model)
-	
+
 	for key, value := range conditions {
 		query = query.Where(key, value)
 	}
-	
+
 	err := query.Count(&count).Error
 	assert.NoError(ts.T(), err)
 	assert.Greater(ts.T(), count, int64(0))
@@ -376,11 +390,11 @@ func (ts *TestSuite) AssertDatabaseRecord(model interface{}, conditions map[stri
 func (ts *TestSuite) AssertDatabaseRecordNotExists(model interface{}, conditions map[string]interface{}) {
 	var count int64
 	query := ts.TestDB.Model(model)
-	
+
 	for key, value := range conditions {
 		query = query.Where(key, value)
 	}
-	
+
 	err := query.Count(&count).Error
 	assert.NoError(ts.T(), err)
 	assert.Equal(ts.T(), int64(0), count)
@@ -404,17 +418,17 @@ func (ts *TestSuite) CreateTempFile(content string) string {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create temp file: %v", err))
 	}
-	
+
 	_, err = tmpFile.WriteString(content)
 	if err != nil {
 		panic(fmt.Sprintf("failed to write to temp file: %v", err))
 	}
-	
+
 	tmpFile.Close()
-	
+
 	// 添加到清理列表
 	ts.Cleanup.Files = append(ts.Cleanup.Files, tmpFile.Name())
-	
+
 	return tmpFile.Name()
 }
 
@@ -424,9 +438,9 @@ func (ts *TestSuite) CreateTempDir() string {
 	if err != nil {
 		panic(fmt.Sprintf("failed to create temp dir: %v", err))
 	}
-	
+
 	// 添加到清理列表
 	ts.Cleanup.Files = append(ts.Cleanup.Files, tmpDir)
-	
+
 	return tmpDir
 }

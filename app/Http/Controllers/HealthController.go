@@ -32,9 +32,9 @@ type HealthController struct {
 // 3. 用于监控系统各组件的健康状态
 func NewHealthController() *HealthController {
 	return &HealthController{
-		db:              Database.GetDB(),
-		storageManager:  Storage.GetStorageManager(),
-		securityService: Services.GetSecurityService(),
+		db:             Database.GetDB(),
+		storageManager: Storage.GetStorageManager(),
+		// securityService 将在需要时通过依赖注入获取
 	}
 }
 

@@ -7,34 +7,42 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // AuditService 审计服务
 type AuditService struct {
+	BaseService
 	storageManager *Storage.StorageManager
 }
 
 // AuditLog 审计日志模型
 type AuditLog struct {
-	ID          uint      `json:"id" gorm:"primaryKey"`
-	UserID      uint      `json:"user_id" gorm:"index"`
-	Username    string    `json:"username" gorm:"size:50"`
-	Action      string    `json:"action" gorm:"size:100;not null"`
-	Resource    string    `json:"resource" gorm:"size:50"`
-	ResourceID  uint      `json:"resource_id"`
-	Description string    `json:"description" gorm:"size:500"`
-	IPAddress   string    `json:"ip_address" gorm:"size:45"`
-	UserAgent   string    `json:"user_agent" gorm:"size:500"`
-	RequestData string    `json:"request_data" gorm:"type:text"`
-	ResponseData string   `json:"response_data" gorm:"type:text"`
-	Status      string    `json:"status" gorm:"size:20;default:'success'"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	UserID       uint      `json:"user_id" gorm:"index"`
+	Username     string    `json:"username" gorm:"size:50"`
+	Action       string    `json:"action" gorm:"size:100;not null"`
+	Resource     string    `json:"resource" gorm:"size:50"`
+	ResourceID   uint      `json:"resource_id"`
+	Description  string    `json:"description" gorm:"size:500"`
+	IPAddress    string    `json:"ip_address" gorm:"size:45"`
+	UserAgent    string    `json:"user_agent" gorm:"size:500"`
+	RequestData  string    `json:"request_data" gorm:"type:text"`
+	ResponseData string    `json:"response_data" gorm:"type:text"`
+	Status       string    `json:"status" gorm:"size:20;default:'success'"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // NewAuditService 创建审计服务
-func NewAuditService() *AuditService {
-	return &AuditService{}
+func NewAuditService(db *gorm.DB) *AuditService {
+	return &AuditService{
+		BaseService: BaseService{
+			DB: db,
+		},
+		storageManager: nil, // 将在运行时设置
+	}
 }
 
 // LogUserAction 记录用户操作

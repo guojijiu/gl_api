@@ -11,20 +11,20 @@ import (
 
 // DatabaseConfig 数据库配置
 type DatabaseConfig struct {
-	Driver            string `mapstructure:"driver"`
-	Host              string `mapstructure:"host"`
-	Port              string `mapstructure:"port"`
-	Username          string `mapstructure:"username"`
-	Password          string `mapstructure:"password"`
-	Database          string `mapstructure:"database"`
-	Charset           string `mapstructure:"charset"`
-	MaxOpenConns      int    `mapstructure:"max_open_conns"`
-	MaxIdleConns      int    `mapstructure:"max_idle_conns"`
-	ConnMaxLifetime   int    `mapstructure:"conn_max_lifetime"`  // 秒
-	ConnMaxIdleTime   int    `mapstructure:"conn_max_idle_time"` // 秒
-	ConnectionTimeout int    `mapstructure:"connection_timeout"` // 秒
-	ReadTimeout       int    `mapstructure:"read_timeout"`       // 秒
-	WriteTimeout      int    `mapstructure:"write_timeout"`      // 秒
+	Driver            string        `mapstructure:"driver"`
+	Host              string        `mapstructure:"host"`
+	Port              string        `mapstructure:"port"`
+	Username          string        `mapstructure:"username"`
+	Password          string        `mapstructure:"password"`
+	Database          string        `mapstructure:"database"`
+	Charset           string        `mapstructure:"charset"`
+	MaxOpenConns      int           `mapstructure:"max_open_conns"`
+	MaxIdleConns      int           `mapstructure:"max_idle_conns"`
+	ConnMaxLifetime   time.Duration `mapstructure:"conn_max_lifetime"`
+	ConnMaxIdleTime   time.Duration `mapstructure:"conn_max_idle_time"`
+	ConnectionTimeout int           `mapstructure:"connection_timeout"` // 秒
+	ReadTimeout       int           `mapstructure:"read_timeout"`       // 秒
+	WriteTimeout      int           `mapstructure:"write_timeout"`      // 秒
 }
 
 // SetDefaults 设置数据库配置默认值
@@ -37,11 +37,11 @@ func (d *DatabaseConfig) SetDefaults() {
 	// 连接池默认配置
 	viper.SetDefault("database.max_open_conns", 100)
 	viper.SetDefault("database.max_idle_conns", 10)
-	viper.SetDefault("database.conn_max_lifetime", 3600) // 1小时
-	viper.SetDefault("database.conn_max_idle_time", 600) // 10分钟
-	viper.SetDefault("database.connection_timeout", 30)  // 30秒
-	viper.SetDefault("database.read_timeout", 30)        // 30秒
-	viper.SetDefault("database.write_timeout", 30)       // 30秒
+	viper.SetDefault("database.conn_max_lifetime", "1h")   // 1小时
+	viper.SetDefault("database.conn_max_idle_time", "10m") // 10分钟
+	viper.SetDefault("database.connection_timeout", 30)    // 30秒
+	viper.SetDefault("database.read_timeout", 30)          // 30秒
+	viper.SetDefault("database.write_timeout", 30)         // 30秒
 }
 
 // BindEnvs 绑定数据库环境变量
@@ -157,20 +157,20 @@ func (d *DatabaseConfig) validateConnectionPool() error {
 
 	// 验证连接生命周期
 	if d.ConnMaxLifetime <= 0 {
-		return fmt.Errorf("连接最大生命周期必须大于0，当前值: %d秒", d.ConnMaxLifetime)
+		return fmt.Errorf("连接最大生命周期必须大于0，当前值: %v", d.ConnMaxLifetime)
 	}
 
-	if d.ConnMaxLifetime > 86400 { // 超过24小时
-		return fmt.Errorf("连接最大生命周期过长，建议不超过24小时，当前值: %d秒", d.ConnMaxLifetime)
+	if d.ConnMaxLifetime > 24*time.Hour { // 超过24小时
+		return fmt.Errorf("连接最大生命周期过长，建议不超过24小时，当前值: %v", d.ConnMaxLifetime)
 	}
 
 	// 验证空闲连接超时
 	if d.ConnMaxIdleTime < 0 {
-		return fmt.Errorf("连接最大空闲时间不能为负数，当前值: %d秒", d.ConnMaxIdleTime)
+		return fmt.Errorf("连接最大空闲时间不能为负数，当前值: %v", d.ConnMaxIdleTime)
 	}
 
-	if d.ConnMaxIdleTime > 3600 { // 超过1小时
-		return fmt.Errorf("连接最大空闲时间过长，建议不超过1小时，当前值: %d秒", d.ConnMaxIdleTime)
+	if d.ConnMaxIdleTime > time.Hour { // 超过1小时
+		return fmt.Errorf("连接最大空闲时间过长，建议不超过1小时，当前值: %v", d.ConnMaxIdleTime)
 	}
 
 	// 验证超时配置
@@ -199,20 +199,20 @@ func (d *DatabaseConfig) GetOptimizedConnectionPoolConfig() (maxOpen, maxIdle in
 		// 生产环境：更高的连接数，更长的生命周期
 		maxOpen = max(d.MaxOpenConns, 200)
 		maxIdle = max(d.MaxIdleConns, 20)
-		maxLifetime = time.Duration(max(d.ConnMaxLifetime, 7200)) * time.Second // 至少2小时
-		maxIdleTime = time.Duration(max(d.ConnMaxIdleTime, 1800)) * time.Second // 至少30分钟
+		maxLifetime = maxDuration(d.ConnMaxLifetime, 2*time.Hour)    // 至少2小时
+		maxIdleTime = maxDuration(d.ConnMaxIdleTime, 30*time.Minute) // 至少30分钟
 	case "development", "dev":
 		// 开发环境：较少的连接数，较短的生命周期
 		maxOpen = min(d.MaxOpenConns, 50)
 		maxIdle = min(d.MaxIdleConns, 5)
-		maxLifetime = time.Duration(min(d.ConnMaxLifetime, 1800)) * time.Second // 最多30分钟
-		maxIdleTime = time.Duration(min(d.ConnMaxIdleTime, 300)) * time.Second  // 最多5分钟
+		maxLifetime = minDuration(d.ConnMaxLifetime, 30*time.Minute) // 最多30分钟
+		maxIdleTime = minDuration(d.ConnMaxIdleTime, 5*time.Minute)  // 最多5分钟
 	default:
 		// 默认配置
 		maxOpen = d.MaxOpenConns
 		maxIdle = d.MaxIdleConns
-		maxLifetime = time.Duration(d.ConnMaxLifetime) * time.Second
-		maxIdleTime = time.Duration(d.ConnMaxIdleTime) * time.Second
+		maxLifetime = d.ConnMaxLifetime
+		maxIdleTime = d.ConnMaxIdleTime
 	}
 
 	return
@@ -227,6 +227,20 @@ func max(a, b int) int {
 }
 
 func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func minDuration(a, b time.Duration) time.Duration {
 	if a < b {
 		return a
 	}

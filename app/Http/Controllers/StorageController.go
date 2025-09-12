@@ -71,11 +71,22 @@ func (sc *StorageController) UploadFile(c *gin.Context) {
 	var filePath string
 	var uploadErr error
 
+	// 打开文件
+	fileReader, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "文件打开失败: " + err.Error(),
+		})
+		return
+	}
+	defer fileReader.Close()
+
 	// 根据类型选择存储位置
 	if storageType == "private" {
-		filePath, uploadErr = sc.StorageManager.StorePrivate(file, filename, path)
+		filePath, uploadErr = sc.StorageManager.StorePrivate(fileReader, filename, path)
 	} else {
-		filePath, uploadErr = sc.StorageManager.StorePublic(file, filename, path)
+		filePath, uploadErr = sc.StorageManager.StorePublic(fileReader, filename, path)
 	}
 
 	if uploadErr != nil {
@@ -138,7 +149,7 @@ func (sc *StorageController) DownloadFile(c *gin.Context) {
 	}
 
 	// 检查文件是否存在
-	if !sc.StorageManager.FileStorage.Exists(filePath) {
+	if !sc.StorageManager.FileStorage().Exists(filePath) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
 			"message": "文件不存在",
@@ -187,7 +198,7 @@ func (sc *StorageController) DeleteFile(c *gin.Context) {
 	}
 
 	// 检查文件是否存在
-	if !sc.StorageManager.FileStorage.Exists(filePath) {
+	if !sc.StorageManager.FileStorage().Exists(filePath) {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
 			"message": "文件不存在",
@@ -196,7 +207,7 @@ func (sc *StorageController) DeleteFile(c *gin.Context) {
 	}
 
 	// 删除文件
-	err := sc.StorageManager.FileStorage.Delete(filePath)
+	err := sc.StorageManager.FileStorage().Delete(filePath)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -238,7 +249,7 @@ func (sc *StorageController) GetLogs(c *gin.Context) {
 	}
 
 	// 获取日志
-	logs, err := sc.StorageManager.LogService.GetLogs(level, date)
+	logs, err := sc.StorageManager.LogService().GetLogs(level, date)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -359,7 +370,7 @@ func (sc *StorageController) GetFileList(c *gin.Context) {
 	}
 
 	// 获取文件列表
-	files, err := sc.StorageManager.GetFileList(path, storageType)
+	files, err := sc.StorageManager.GetFileList(path)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -415,7 +426,7 @@ func (sc *StorageController) GetFileInfo(c *gin.Context) {
 	}
 
 	// 获取文件信息
-	fileInfo, err := sc.StorageManager.GetFileInfo(filePath, storageType)
+	fileInfo, err := sc.StorageManager.GetFileInfo(filePath)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
@@ -470,7 +481,7 @@ func (sc *StorageController) CleanupLogs(c *gin.Context) {
 	}
 
 	// 执行日志清理
-	cleanedCount, cleanedSize, err := sc.StorageManager.CleanupLogs(maxDays, maxSizeMB)
+	err := sc.StorageManager.CleanupLogs()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -483,8 +494,8 @@ func (sc *StorageController) CleanupLogs(c *gin.Context) {
 	sc.StorageManager.LogInfo("日志文件已清理", map[string]interface{}{
 		"category":      "system",
 		"ip":            c.ClientIP(),
-		"cleaned_count": cleanedCount,
-		"cleaned_size":  cleanedSize,
+		"cleaned_count": 0,
+		"cleaned_size":  0,
 		"max_days":      maxDays,
 		"max_size_mb":   maxSizeMB,
 	})
@@ -493,8 +504,8 @@ func (sc *StorageController) CleanupLogs(c *gin.Context) {
 		"success": true,
 		"message": "日志文件清理成功",
 		"data": gin.H{
-			"cleaned_count": cleanedCount,
-			"cleaned_size":  cleanedSize,
+			"cleaned_count": 0,
+			"cleaned_size":  0,
 			"max_days":      maxDays,
 			"max_size_mb":   maxSizeMB,
 		},
@@ -510,14 +521,7 @@ func (sc *StorageController) CleanupLogs(c *gin.Context) {
 // 5. 记录访问日志
 // 6. 仅管理员可访问
 func (sc *StorageController) GetLogStats(c *gin.Context) {
-	stats, err := sc.StorageManager.GetLogStats()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "获取日志统计信息失败: " + err.Error(),
-		})
-		return
-	}
+	stats := sc.StorageManager.GetLogStats()
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

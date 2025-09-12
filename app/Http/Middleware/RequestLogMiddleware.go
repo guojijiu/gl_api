@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"bufio"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -273,13 +274,13 @@ func (m *RequestLogMiddleware) buildLogMessage(c *gin.Context, duration time.Dur
 	// 根据状态码选择消息格式
 	switch {
 	case statusCode >= 500:
-		return fmt.Sprintf("HTTP %s %s %s - %s (ERROR)", method, path, statusCode, durationStr)
+		return fmt.Sprintf("HTTP %s %s %d - %s (ERROR)", method, path, statusCode, durationStr)
 	case statusCode >= 400:
-		return fmt.Sprintf("HTTP %s %s %s - %s (WARNING)", method, path, statusCode, durationStr)
+		return fmt.Sprintf("HTTP %s %s %d - %s (WARNING)", method, path, statusCode, durationStr)
 	case statusCode >= 300:
-		return fmt.Sprintf("HTTP %s %s %s - %s (REDIRECT)", method, path, statusCode, durationStr)
+		return fmt.Sprintf("HTTP %s %s %d - %s (REDIRECT)", method, path, statusCode, durationStr)
 	default:
-		return fmt.Sprintf("HTTP %s %s %s - %s", method, path, statusCode, durationStr)
+		return fmt.Sprintf("HTTP %s %s %d - %s", method, path, statusCode, durationStr)
 	}
 }
 

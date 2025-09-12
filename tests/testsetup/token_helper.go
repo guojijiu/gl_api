@@ -42,12 +42,12 @@ func (th *TokenHelper) CreateTestUserWithToken(username, email, password, role s
 		Email:    email,
 		Password: password,
 	}
-	
+
 	user, err := th.authService.Register(registerRequest)
 	if err != nil {
 		return nil, "", fmt.Errorf("创建测试用户失败: %v", err)
 	}
-	
+
 	// 如果需要管理员角色，更新用户角色
 	if role == "admin" {
 		if err := Database.DB.Model(user).Update("role", "admin").Error; err != nil {
@@ -55,13 +55,14 @@ func (th *TokenHelper) CreateTestUserWithToken(username, email, password, role s
 		}
 		user.Role = "admin"
 	}
-	
+
 	// 生成token
-	token, err := Utils.GenerateToken(user.ID, user.Username, user.Role)
+	jwtUtils := Utils.NewJWTUtils(&Config.GetConfig().JWT)
+	token, err := jwtUtils.GenerateToken(user.ID, user.Username, user.Email, user.Role)
 	if err != nil {
 		return nil, "", fmt.Errorf("生成token失败: %v", err)
 	}
-	
+
 	return user, token, nil
 }
 
@@ -85,13 +86,14 @@ func (th *TokenHelper) GenerateTokenForUser(user *Models.User) (string, error) {
 	if !user.IsActive() {
 		return "", fmt.Errorf("用户账户已禁用")
 	}
-	
+
 	// 生成token
-	token, err := Utils.GenerateToken(user.ID, user.Username, user.Role)
+	jwtUtils := Utils.NewJWTUtils(&Config.GetConfig().JWT)
+	token, err := jwtUtils.GenerateToken(user.ID, user.Username, user.Email, user.Role)
 	if err != nil {
 		return "", fmt.Errorf("生成token失败: %v", err)
 	}
-	
+
 	return token, nil
 }
 
@@ -105,22 +107,24 @@ func (th *TokenHelper) ValidateToken(token string) (*Utils.Claims, error) {
 	if len(token) > 7 && token[:7] == "Bearer " {
 		token = token[7:]
 	}
-	
+
 	// 验证token
-	claims, err := Utils.ValidateToken(token)
+	jwtUtils := Utils.NewJWTUtils(&Config.GetConfig().JWT)
+	claims, err := jwtUtils.ValidateToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("token验证失败: %v", err)
 	}
-	
+
 	return claims, nil
 }
 
 // CreateExpiredToken 创建已过期的token（用于测试）
 func (th *TokenHelper) CreateExpiredToken(user *Models.User) (string, error) {
 	// 使用自定义的过期时间（过去的时间）
-	claims := Utils.Claims{
+	claims := &Utils.Claims{
 		UserID:   user.ID,
 		Username: user.Username,
+		Email:    user.Email,
 		Role:     user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)), // 1小时前过期
@@ -128,7 +132,7 @@ func (th *TokenHelper) CreateExpiredToken(user *Models.User) (string, error) {
 			NotBefore: jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
 		},
 	}
-	
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	secret := Config.GetConfig().JWT.Secret
 	return token.SignedString([]byte(secret))
@@ -151,23 +155,23 @@ func (th *TokenHelper) GetBearerToken(token string) string {
 // 3. 返回用户和token映射
 func (th *TokenHelper) CreateMultipleUsersWithTokens(count int) (map[string]*UserTokenInfo, error) {
 	users := make(map[string]*UserTokenInfo)
-	
+
 	for i := 1; i <= count; i++ {
 		username := fmt.Sprintf("testuser%d", i)
 		email := fmt.Sprintf("testuser%d@example.com", i)
 		password := "password123"
-		
+
 		user, token, err := th.CreateTestUserWithToken(username, email, password, "user")
 		if err != nil {
 			return nil, fmt.Errorf("创建用户 %d 失败: %v", i, err)
 		}
-		
+
 		users[username] = &UserTokenInfo{
 			User:  user,
 			Token: token,
 		}
 	}
-	
+
 	return users, nil
 }
 
@@ -183,11 +187,11 @@ func (th *TokenHelper) CleanupTestUsers() error {
 	if err := Database.DB.Where("email LIKE ?", "%@test.com").Delete(&Models.User{}).Error; err != nil {
 		return fmt.Errorf("清理测试用户失败: %v", err)
 	}
-	
+
 	if err := Database.DB.Where("email LIKE ?", "%@example.com").Delete(&Models.User{}).Error; err != nil {
 		return fmt.Errorf("清理测试用户失败: %v", err)
 	}
-	
+
 	return nil
 }
 
@@ -210,11 +214,11 @@ func (th *TokenHelper) GetAdminTokenHeaders() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	headers := th.GetTestTokenHeaders(token)
 	headers["X-Test-User-ID"] = fmt.Sprintf("%d", admin.ID)
 	headers["X-Test-User-Role"] = admin.Role
-	
+
 	return headers, nil
 }
 
@@ -224,10 +228,41 @@ func (th *TokenHelper) GetUserTokenHeaders() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	headers := th.GetTestTokenHeaders(token)
 	headers["X-Test-User-ID"] = fmt.Sprintf("%d", user.ID)
 	headers["X-Test-User-Role"] = user.Role
-	
+
 	return headers, nil
+}
+
+// GenerateTestToken 为测试用户生成token
+// 功能说明：
+// 1. 为测试用户数据生成有效的JWT token
+// 2. 支持自定义用户信息
+// 3. 返回可用于测试的token字符串
+func (th *TokenHelper) GenerateTestToken(userData map[string]interface{}) string {
+	// 创建测试用的Claims
+	claims := &Utils.Claims{
+		UserID:   1, // 测试用户ID
+		Username: userData["username"].(string),
+		Email:    userData["email"].(string),
+		Role:     userData["role"].(string),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			NotBefore: jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	// 生成token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	secret := Config.GetConfig().JWT.Secret
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		// 如果生成失败，返回一个测试用的假token
+		return "test-token-" + userData["username"].(string)
+	}
+
+	return tokenString
 }

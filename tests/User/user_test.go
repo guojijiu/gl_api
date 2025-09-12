@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"cloud-platform-api/app/Database"
 	"cloud-platform-api/tests/testsetup"
 	"encoding/json"
 	"fmt"
@@ -13,7 +12,7 @@ import (
 
 func init() {
 	// 确保在单文件执行时也完成公共初始化
-	if testsetup.Router == nil || testsetup.Token == "" || testsetup.User.ID == 0 {
+	if testsetup.Router == nil {
 		testsetup.Init()
 	}
 }
@@ -21,12 +20,18 @@ func init() {
 // go test -v tests/User/user_test.go -run TestGetUser
 func TestGetUser(t *testing.T) {
 
-	// 发起真实请求
-	req, err := http.NewRequest("GET", "/api/v1/users/"+strconv.FormatUint(uint64(testsetup.User.ID), 10), nil)
+	// 创建测试用户和token
+	userInfo, err := testsetup.CreateTestUserWithToken("testuser", "test@example.com", "password123", "user")
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+testsetup.Token)
+
+	// 发起真实请求
+	req, err := http.NewRequest("GET", "/api/v1/users/"+strconv.FormatUint(uint64(userInfo.User.ID), 10), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+userInfo.Token)
 
 	w := httptest.NewRecorder()
 	testsetup.Router.ServeHTTP(w, req)
@@ -40,9 +45,9 @@ func TestGetUser(t *testing.T) {
 
 	// 解析并断言响应
 	type apiResp struct {
-		Success bool          `json:"success"`
-		Message string        `json:"message"`
-		Data    Database.User `json:"data"`
+		Success bool                   `json:"success"`
+		Message string                 `json:"message"`
+		Data    map[string]interface{} `json:"data"`
 	}
 	var body apiResp
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {

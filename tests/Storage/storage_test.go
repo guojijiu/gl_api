@@ -1,6 +1,7 @@
 package Storage
 
 import (
+	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Storage"
 	"io"
 	"os"
@@ -16,24 +17,21 @@ func TestStorageManager(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	// 创建StorageManager
-	sm := Storage.NewStorageManager(testDir)
+	storageConfig := &Config.StorageConfig{
+		BasePath: testDir,
+	}
+	sm := Storage.NewStorageManager(storageConfig)
 
 	// 测试日志功能
 	t.Run("TestLogService", func(t *testing.T) {
-		err := sm.LogInfo("测试信息日志", map[string]interface{}{
+		sm.LogInfo("测试信息日志", map[string]interface{}{
 			"test": true,
 			"time": time.Now().Unix(),
 		})
-		if err != nil {
-			t.Errorf("记录信息日志失败: %v", err)
-		}
 
-		err = sm.LogError("测试错误日志", map[string]interface{}{
+		sm.LogError("测试错误日志", map[string]interface{}{
 			"error": "测试错误",
 		})
-		if err != nil {
-			t.Errorf("记录错误日志失败: %v", err)
-		}
 	})
 
 	// 测试缓存功能
@@ -77,18 +75,20 @@ func TestStorageManager(t *testing.T) {
 			t.Errorf("写入临时文件失败: %v", err)
 		}
 
-		// 获取临时文件信息
-		count, size, err := sm.TempService.GetTempFileInfo()
-		if err != nil {
-			t.Errorf("获取临时文件信息失败: %v", err)
+		// 获取临时文件统计信息
+		stats := sm.TempService().GetTempStats()
+		if stats == nil {
+			t.Errorf("获取临时文件统计信息失败")
 		}
 
-		if count < 1 {
-			t.Errorf("临时文件数量不正确，期望 >= 1, 实际: %d", count)
+		count, ok := stats["total_files"].(int)
+		if !ok || count < 1 {
+			t.Errorf("临时文件数量不正确，期望 >= 1, 实际: %v", count)
 		}
 
-		if size < int64(len(testData)) {
-			t.Errorf("临时文件大小不正确，期望 >= %d, 实际: %d", len(testData), size)
+		totalSize, ok := stats["total_size"].(int64)
+		if !ok || totalSize < int64(len(testData)) {
+			t.Errorf("临时文件大小不正确，期望 >= %d, 实际: %v", len(testData), totalSize)
 		}
 	})
 
@@ -187,7 +187,10 @@ func TestFileUploadAndDelete(t *testing.T) {
 	defer os.RemoveAll(testDir)
 
 	// 创建StorageManager
-	sm := Storage.NewStorageManager(testDir)
+	storageConfig := &Config.StorageConfig{
+		BasePath: testDir,
+	}
+	sm := Storage.NewStorageManager(storageConfig)
 
 	// 测试文件上传功能
 	t.Run("TestFileUpload", func(t *testing.T) {
@@ -208,7 +211,7 @@ func TestFileUploadAndDelete(t *testing.T) {
 
 		// 检查文件是否存在
 		expectedPath := filepath.Join(testDir, "app", "public", testPath, testFilename)
-		if !sm.FileStorage.Exists(expectedPath) {
+		if !sm.FileStorage().Exists(expectedPath) {
 			t.Errorf("上传的公共文件不存在: %s", expectedPath)
 		}
 
@@ -221,7 +224,7 @@ func TestFileUploadAndDelete(t *testing.T) {
 
 		// 检查私有文件是否存在
 		expectedPath2 := filepath.Join(testDir, "app", "private", testPath, testFilename)
-		if !sm.FileStorage.Exists(expectedPath2) {
+		if !sm.FileStorage().Exists(expectedPath2) {
 			t.Errorf("上传的私有文件不存在: %s", expectedPath2)
 		}
 	})
@@ -242,18 +245,18 @@ func TestFileUploadAndDelete(t *testing.T) {
 
 		// 检查文件存在
 		filePath := filepath.Join(testDir, "app", "public", testPath, testFilename)
-		if !sm.FileStorage.Exists(filePath) {
+		if !sm.FileStorage().Exists(filePath) {
 			t.Errorf("测试文件创建失败")
 		}
 
 		// 删除文件
-		err = sm.FileStorage.Delete(filePath)
+		err = sm.FileStorage().Delete(filePath)
 		if err != nil {
 			t.Errorf("删除文件失败: %v", err)
 		}
 
 		// 检查文件是否已删除
-		if sm.FileStorage.Exists(filePath) {
+		if sm.FileStorage().Exists(filePath) {
 			t.Errorf("文件删除失败，文件仍然存在")
 		}
 	})

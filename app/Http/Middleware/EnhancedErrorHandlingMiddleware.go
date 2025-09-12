@@ -140,7 +140,7 @@ func (m *EnhancedErrorHandlingMiddleware) logRequest(c *gin.Context) {
 		fields["request_id"] = requestID
 	}
 
-	Utils.WithFields(fields).Info("Request started")
+	Utils.WithFields("Request started", fields)
 }
 
 // logResponse 记录响应信息
@@ -167,27 +167,34 @@ func (m *EnhancedErrorHandlingMiddleware) logResponse(c *gin.Context, startTime 
 	// 检查是否为慢请求
 	if duration > m.config.SlowRequestThreshold {
 		fields["slow_request"] = true
-		Utils.WithFields(fields).Warn("Slow request detected")
+		Utils.WithFields("Slow request detected", fields)
 	} else {
-		Utils.WithFields(fields).Info("Request completed")
+		Utils.WithFields("Request completed", fields)
 	}
 }
 
 // handlePanic 处理panic
 func (m *EnhancedErrorHandlingMiddleware) handlePanic(c *gin.Context, recovered interface{}) {
 	// 创建增强错误
-	err := Utils.NewErrorBuilder("PANIC", "Application panic occurred", http.StatusInternalServerError).
-		Category(Utils.CategorySystem).
+	err := Utils.NewErrorBuilder().
+		Message("Application panic occurred").
+		Code("PANIC").
+		Level(Utils.ErrorLevelFatal).
+		Context("status_code", http.StatusInternalServerError).
+		Context("category", Utils.CategorySystem).
 		Severity(Utils.SeverityCritical).
 		Details(fmt.Sprintf("%v", recovered)).
-		WithContextValue(c.Request.Context()).
+		WithContextValue("request_context", c.Request.Context()).
 		StackTrace().
 		Source(m.getCallerInfo()).
-		SetRecoverable(false).
+		Context("recoverable", false).
 		Build()
 
 	// 记录错误
-	Utils.LogError(err)
+	Utils.LogError(err, map[string]interface{}{
+		"panic":     true,
+		"recovered": recovered,
+	})
 
 	// 返回错误响应
 	m.sendErrorResponse(c, err)
@@ -198,7 +205,9 @@ func (m *EnhancedErrorHandlingMiddleware) handlePanic(c *gin.Context, recovered 
 func (m *EnhancedErrorHandlingMiddleware) handleErrors(c *gin.Context) {
 	for _, ginErr := range c.Errors {
 		enhancedErr := m.convertToEnhancedError(ginErr.Err, c)
-		Utils.LogError(enhancedErr)
+		Utils.LogError(enhancedErr, map[string]interface{}{
+			"gin_error": true,
+		})
 
 		// 只处理第一个错误
 		if !c.Writer.Written() {
@@ -211,15 +220,16 @@ func (m *EnhancedErrorHandlingMiddleware) handleErrors(c *gin.Context) {
 // convertToEnhancedError 转换为增强错误
 func (m *EnhancedErrorHandlingMiddleware) convertToEnhancedError(err error, c *gin.Context) *Utils.EnhancedError {
 	// 如果已经是增强错误，直接返回
-	if enhancedErr, ok := Utils.GetEnhancedError(err); ok {
+	enhancedErr := Utils.GetEnhancedError(err)
+	if enhancedErr != nil {
 		return enhancedErr
 	}
 
 	// 根据错误类型创建增强错误
-	enhancedErr := m.classifyAndCreateError(err, c)
+	enhancedErr = m.classifyAndCreateError(err, c)
 
 	// 添加上下文信息
-	enhancedErr = enhancedErr.WithContextValue(c.Request.Context())
+	enhancedErr = enhancedErr.WithContextValue("request_context", c.Request.Context())
 
 	// 添加请求信息
 	enhancedErr = enhancedErr.WithContext("method", c.Request.Method).
@@ -241,74 +251,114 @@ func (m *EnhancedErrorHandlingMiddleware) classifyAndCreateError(err error, c *g
 
 	switch {
 	case strings.Contains(errStr, "validation") || strings.Contains(errStr, "invalid"):
-		return Utils.NewErrorBuilder("VALIDATION_ERROR", "Validation failed", http.StatusBadRequest).
-			Category(Utils.CategoryValidation).
+		return Utils.NewErrorBuilder().
+			Message("Validation failed").
+			Code("VALIDATION_ERROR").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusBadRequest).
+			Context("category", Utils.CategoryValidation).
 			Severity(Utils.SeverityLow).
 			Details(err.Error()).
 			Build()
 
 	case strings.Contains(errStr, "not found") || strings.Contains(errStr, "不存在"):
-		return Utils.NewErrorBuilder("NOT_FOUND", "Resource not found", http.StatusNotFound).
-			Category(Utils.CategoryBusiness).
+		return Utils.NewErrorBuilder().
+			Message("Resource not found").
+			Code("NOT_FOUND").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusNotFound).
+			Context("category", Utils.CategoryUser).
 			Severity(Utils.SeverityLow).
 			Details(err.Error()).
 			Build()
 
 	case strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "未授权"):
-		return Utils.NewErrorBuilder("UNAUTHORIZED", "Unauthorized access", http.StatusUnauthorized).
-			Category(Utils.CategoryAuth).
+		return Utils.NewErrorBuilder().
+			Message("Unauthorized access").
+			Code("UNAUTHORIZED").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusUnauthorized).
+			Context("category", Utils.CategoryAuth).
 			Severity(Utils.SeverityMedium).
 			Details(err.Error()).
 			Build()
 
 	case strings.Contains(errStr, "forbidden") || strings.Contains(errStr, "禁止"):
-		return Utils.NewErrorBuilder("FORBIDDEN", "Forbidden access", http.StatusForbidden).
-			Category(Utils.CategoryAuth).
+		return Utils.NewErrorBuilder().
+			Message("Forbidden access").
+			Code("FORBIDDEN").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusForbidden).
+			Context("category", Utils.CategoryAuth).
 			Severity(Utils.SeverityMedium).
 			Details(err.Error()).
 			Build()
 
 	case strings.Contains(errStr, "already exists") || strings.Contains(errStr, "duplicate"):
-		return Utils.NewErrorBuilder("CONFLICT", "Resource conflict", http.StatusConflict).
-			Category(Utils.CategoryBusiness).
+		return Utils.NewErrorBuilder().
+			Message("Resource conflict").
+			Code("CONFLICT").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusConflict).
+			Context("category", Utils.CategoryUser).
 			Severity(Utils.SeverityLow).
 			Details(err.Error()).
 			Build()
 
 	case strings.Contains(errStr, "rate limit") || strings.Contains(errStr, "too many requests"):
-		return Utils.NewErrorBuilder("RATE_LIMIT", "Rate limit exceeded", http.StatusTooManyRequests).
-			Category(Utils.CategorySecurity).
+		return Utils.NewErrorBuilder().
+			Message("Rate limit exceeded").
+			Code("RATE_LIMIT").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusTooManyRequests).
+			Context("category", Utils.CategoryAuth).
 			Severity(Utils.SeverityMedium).
 			Details(err.Error()).
 			Build()
 
 	case strings.Contains(errStr, "database") || strings.Contains(errStr, "sql"):
-		return Utils.NewErrorBuilder("DATABASE_ERROR", "Database operation failed", http.StatusInternalServerError).
-			Category(Utils.CategoryDatabase).
+		return Utils.NewErrorBuilder().
+			Message("Database operation failed").
+			Code("DATABASE_ERROR").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusInternalServerError).
+			Context("category", Utils.CategoryDatabase).
 			Severity(Utils.SeverityHigh).
 			Details(err.Error()).
-			SetRetryable(true).
+			Context("retryable", true).
 			Build()
 
 	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection"):
-		return Utils.NewErrorBuilder("NETWORK_ERROR", "Network error", http.StatusBadGateway).
-			Category(Utils.CategoryNetwork).
+		return Utils.NewErrorBuilder().
+			Message("Network error").
+			Code("NETWORK_ERROR").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusBadGateway).
+			Context("category", Utils.CategoryNetwork).
 			Severity(Utils.SeverityHigh).
 			Details(err.Error()).
-			SetRetryable(true).
+			Context("retryable", true).
 			Build()
 
 	case strings.Contains(errStr, "timeout"):
-		return Utils.NewErrorBuilder("TIMEOUT", "Request timeout", http.StatusRequestTimeout).
-			Category(Utils.CategoryNetwork).
+		return Utils.NewErrorBuilder().
+			Message("Request timeout").
+			Code("TIMEOUT").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusRequestTimeout).
+			Context("category", Utils.CategoryNetwork).
 			Severity(Utils.SeverityMedium).
 			Details(err.Error()).
-			SetRetryable(true).
+			Context("retryable", true).
 			Build()
 
 	default:
-		return Utils.NewErrorBuilder("INTERNAL_ERROR", "Internal server error", http.StatusInternalServerError).
-			Category(Utils.CategorySystem).
+		return Utils.NewErrorBuilder().
+			Message("Internal server error").
+			Code("INTERNAL_ERROR").
+			Level(Utils.ErrorLevelError).
+			Context("status_code", http.StatusInternalServerError).
+			Context("category", Utils.CategorySystem).
 			Severity(Utils.SeverityHigh).
 			Details(err.Error()).
 			Build()
@@ -336,8 +386,8 @@ func (m *EnhancedErrorHandlingMiddleware) sendErrorResponse(c *gin.Context, err 
 	}
 
 	// 添加堆栈跟踪
-	if m.config.IncludeStackTrace && err.StackTrace != "" {
-		response["stack_trace"] = err.StackTrace
+	if m.config.IncludeStackTrace && len(err.Stack) > 0 {
+		response["stack_trace"] = err.Stack
 	}
 
 	// 添加重试信息
@@ -387,7 +437,9 @@ type DefaultErrorHandler struct{}
 
 // HandleError 处理错误
 func (h *DefaultErrorHandler) HandleError(c *gin.Context, err *Utils.EnhancedError) {
-	Utils.LogError(err)
+	Utils.LogError(err, map[string]interface{}{
+		"handler": "DefaultErrorHandler",
+	})
 
 	response := gin.H{
 		"success": false,
@@ -401,18 +453,18 @@ func (h *DefaultErrorHandler) HandleError(c *gin.Context, err *Utils.EnhancedErr
 
 // CustomErrorHandler 自定义错误处理器
 type CustomErrorHandler struct {
-	handlers map[Utils.ErrorCategory]func(c *gin.Context, err *Utils.EnhancedError)
+	handlers map[string]func(c *gin.Context, err *Utils.EnhancedError)
 }
 
 // NewCustomErrorHandler 创建自定义错误处理器
 func NewCustomErrorHandler() *CustomErrorHandler {
 	return &CustomErrorHandler{
-		handlers: make(map[Utils.ErrorCategory]func(c *gin.Context, err *Utils.EnhancedError)),
+		handlers: make(map[string]func(c *gin.Context, err *Utils.EnhancedError)),
 	}
 }
 
 // RegisterHandler 注册错误处理器
-func (h *CustomErrorHandler) RegisterHandler(category Utils.ErrorCategory, handler func(c *gin.Context, err *Utils.EnhancedError)) {
+func (h *CustomErrorHandler) RegisterHandler(category string, handler func(c *gin.Context, err *Utils.EnhancedError)) {
 	h.handlers[category] = handler
 }
 

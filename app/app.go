@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 )
@@ -67,8 +66,8 @@ func NewApp() *App {
 	}
 
 	// 初始化存储管理器
-	storagePath := filepath.Join(".", "storage")
-	storageManager := Storage.NewStorageManager(storagePath)
+	storageConfig := Config.GetStorageConfig()
+	storageManager := Storage.NewStorageManager(storageConfig)
 
 	// 初始化日志管理器服务（确保日志按目录分离）
 	logManager := Services.NewLogManagerService(&Config.GetConfig().Log)
@@ -139,7 +138,7 @@ func NewApp() *App {
 	logManager.LogBusiness(startupCtx, "system", "startup", "应用启动成功", map[string]interface{}{
 		"port":          app.Config.Server.Port,
 		"mode":          app.Config.Server.Mode,
-		"storage_path":  storagePath,
+		"storage_path":  storageConfig.BasePath,
 		"log_base_path": Config.GetConfig().Log.BasePath,
 	})
 
