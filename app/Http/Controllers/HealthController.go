@@ -116,6 +116,8 @@ func (hc *HealthController) Health(c *gin.Context) {
 
 	// 确定整体状态
 	overallStatus := "healthy"
+
+	// 检查服务状态
 	for _, service := range services {
 		if service.Status != "healthy" {
 			overallStatus = "unhealthy"
@@ -234,13 +236,16 @@ func (hc *HealthController) Readiness(c *gin.Context) {
 			"success":  true,
 			"message":  "All services are ready",
 			"services": services,
+			"data":     services,
 		})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success":  true,
 		"message":  "Application is ready",
 		"services": services,
+		"data":     services,
 	})
 }
 
@@ -258,6 +263,10 @@ func (hc *HealthController) Liveness(c *gin.Context) {
 		"success":   true,
 		"message":   "Application is alive",
 		"timestamp": time.Now(),
+		"data": map[string]interface{}{
+			"status":    "alive",
+			"timestamp": time.Now(),
+		},
 	})
 }
 
@@ -545,7 +554,18 @@ func (hc *HealthController) checkCustomServices() map[string]ServiceHealth {
 
 	for name, checkFunc := range hc.customChecks {
 		start := time.Now()
-		err := checkFunc()
+
+		// 使用defer和recover来处理panic
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("panic in custom check: %v", r)
+				}
+			}()
+			err = checkFunc()
+		}()
+
 		duration := time.Since(start)
 
 		status := "healthy"
@@ -590,4 +610,27 @@ func (hc *HealthController) GetUptimeString() string {
 	} else {
 		return fmt.Sprintf("%ds", seconds)
 	}
+}
+
+// ReadinessCheck 就绪检查方法（用于测试）
+func (hc *HealthController) ReadinessCheck() bool {
+	// 检查关键服务是否就绪
+	services := map[string]bool{
+		"database": hc.checkDatabase(),
+		"redis":    hc.checkRedis(),
+		"storage":  hc.checkStorage(),
+	}
+
+	for _, status := range services {
+		if !status {
+			return false
+		}
+	}
+	return true
+}
+
+// LivenessCheck 存活检查方法（用于测试）
+func (hc *HealthController) LivenessCheck() bool {
+	// 简单的存活检查
+	return true
 }

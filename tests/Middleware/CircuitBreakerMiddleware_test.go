@@ -82,9 +82,9 @@ func TestCircuitBreakerMiddleware(t *testing.T) {
 		breaker.RecordResult(true, 150*time.Millisecond)
 
 		stats := breaker.GetStats()
-		assert.Equal(t, 3, stats["requests"])
-		assert.Equal(t, 1, stats["failures"])
-		assert.Equal(t, 2, stats["successes"])
+		assert.Equal(t, uint32(3), stats["requests"])
+		assert.Equal(t, uint32(1), stats["failures"])
+		assert.Equal(t, uint32(2), stats["successes"])
 	})
 
 	t.Run("熔断器重置", func(t *testing.T) {

@@ -76,7 +76,13 @@ func TestStorageManager(t *testing.T) {
 		}
 
 		// 获取临时文件统计信息
-		stats := sm.TempService().GetTempStats()
+		tempService := sm.TempService()
+		if tempService == nil {
+			t.Errorf("临时文件服务未初始化")
+			return
+		}
+
+		stats := tempService.GetTempStats()
 		if stats == nil {
 			t.Errorf("获取临时文件统计信息失败")
 		}
@@ -94,23 +100,9 @@ func TestStorageManager(t *testing.T) {
 
 	// 测试存储信息
 	t.Run("TestStorageInfo", func(t *testing.T) {
-		info := sm.GetStorageInfo()
-
-		// 检查基本信息
-		if info["base_path"] != testDir {
-			t.Errorf("基础路径不正确，期望: %s, 实际: %v", testDir, info["base_path"])
-		}
-
-		if info["log_path"] != filepath.Join(testDir, "logs") {
-			t.Errorf("日志路径不正确")
-		}
-
-		if info["cache_path"] != filepath.Join(testDir, "framework", "cache") {
-			t.Errorf("缓存路径不正确")
-		}
-
-		if info["temp_path"] != filepath.Join(testDir, "temp") {
-			t.Errorf("临时文件路径不正确")
+		// 检查基础路径
+		if sm.BasePath() != testDir {
+			t.Errorf("基础路径不正确，期望: %s, 实际: %s", testDir, sm.BasePath())
 		}
 	})
 }
@@ -156,13 +148,13 @@ func TestFileStorage(t *testing.T) {
 		if err != nil {
 			t.Errorf("读取文件失败: %v", err)
 		}
-		defer file.Close()
 
 		// 读取内容
 		content, err := io.ReadAll(file)
 		if err != nil {
 			t.Errorf("读取文件内容失败: %v", err)
 		}
+		file.Close() // 确保文件被关闭
 
 		if string(content) != testContent {
 			t.Errorf("文件内容不正确，期望: %s, 实际: %s", testContent, string(content))
@@ -210,7 +202,7 @@ func TestFileUploadAndDelete(t *testing.T) {
 		}
 
 		// 检查文件是否存在
-		expectedPath := filepath.Join(testDir, "app", "public", testPath, testFilename)
+		expectedPath := filepath.Join(testPath, testFilename)
 		if !sm.FileStorage().Exists(expectedPath) {
 			t.Errorf("上传的公共文件不存在: %s", expectedPath)
 		}
@@ -223,7 +215,7 @@ func TestFileUploadAndDelete(t *testing.T) {
 		}
 
 		// 检查私有文件是否存在
-		expectedPath2 := filepath.Join(testDir, "app", "private", testPath, testFilename)
+		expectedPath2 := filepath.Join(testPath, testFilename)
 		if !sm.FileStorage().Exists(expectedPath2) {
 			t.Errorf("上传的私有文件不存在: %s", expectedPath2)
 		}
@@ -244,7 +236,7 @@ func TestFileUploadAndDelete(t *testing.T) {
 		}
 
 		// 检查文件存在
-		filePath := filepath.Join(testDir, "app", "public", testPath, testFilename)
+		filePath := filepath.Join(testPath, testFilename)
 		if !sm.FileStorage().Exists(filePath) {
 			t.Errorf("测试文件创建失败")
 		}

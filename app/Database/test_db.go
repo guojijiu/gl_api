@@ -1,105 +1,179 @@
 package Database
 
 import (
-	"cloud-platform-api/app/Models"
+	"cloud-platform-api/app/Config"
+	"cloud-platform-api/app/Database/Migrations"
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"time"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
-	"log"
+	_ "modernc.org/sqlite"
 )
 
+// TestDB 测试数据库实例
 var TestDB *gorm.DB
 
 // InitTestDB 初始化测试数据库
-func InitTestDB() {
-	var err error
+// 使用内存SQLite数据库进行测试，避免外部依赖
+func InitTestDB() *gorm.DB {
+	if TestDB != nil {
+		return TestDB
+	}
 
-	// 使用SQLite作为测试数据库
-	TestDB, err = gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
+	// 使用纯Go的SQLite驱动创建内存数据库
+	dsn := "file::memory:?cache=shared&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
+		Logger: getTestGormLogger(),
 	})
-
 	if err != nil {
 		log.Fatal("Failed to connect to test database:", err)
 	}
 
-	// 自动迁移所有模型
-	err = TestDB.AutoMigrate(
-		&Models.User{},
-		&Models.Category{},
-		&Models.Tag{},
-		&Models.Post{},
-		&Models.AuditLog{},
-	)
-
+	// 设置连接池参数
+	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatal("Failed to migrate test database:", err)
+		log.Fatal("Failed to get sql.DB:", err)
 	}
 
-	// 临时替换主数据库连接
-	originalDB := DB
-	DB = TestDB
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
-	// 在测试结束后恢复
-	defer func() {
-		DB = originalDB
-	}()
+	// 运行迁移
+	migrationManager := Migrations.NewMigrationManager(db)
+	if err := migrationManager.RunMigrations(); err != nil {
+		log.Fatal("Failed to run test migrations:", err)
+	}
+
+	TestDB = db
+	log.Println("Test database initialized successfully")
+	return db
 }
 
-// CleanupTestDB 清理测试数据库
-func CleanupTestDB() {
+// getTestGormLogger 获取测试用的GORM日志配置
+func getTestGormLogger() logger.Interface {
+	return logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             time.Second,
+			LogLevel:                  logger.Silent, // 测试时静默日志
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  false,
+		},
+	)
+}
+
+// CloseTestDB 关闭测试数据库
+func CloseTestDB() error {
 	if TestDB != nil {
 		sqlDB, err := TestDB.DB()
-		if err == nil {
-			sqlDB.Close()
+		if err != nil {
+			return err
 		}
+		err = sqlDB.Close()
+		TestDB = nil
+		return err
+	}
+	return nil
+}
+
+// GetTestDB 获取测试数据库实例
+func GetTestDB() *gorm.DB {
+	if TestDB == nil {
+		return InitTestDB()
+	}
+	return TestDB
+}
+
+// ResetTestDB 重置测试数据库（清空所有数据）
+func ResetTestDB() error {
+	if TestDB == nil {
+		return fmt.Errorf("test database not initialized")
+	}
+
+	// 删除所有表
+	if err := TestDB.Exec("DROP TABLE IF EXISTS users").Error; err != nil {
+		return err
+	}
+	if err := TestDB.Exec("DROP TABLE IF EXISTS posts").Error; err != nil {
+		return err
+	}
+	if err := TestDB.Exec("DROP TABLE IF EXISTS categories").Error; err != nil {
+		return err
+	}
+	if err := TestDB.Exec("DROP TABLE IF EXISTS tags").Error; err != nil {
+		return err
+	}
+	if err := TestDB.Exec("DROP TABLE IF EXISTS api_keys").Error; err != nil {
+		return err
+	}
+	if err := TestDB.Exec("DROP TABLE IF EXISTS audit_logs").Error; err != nil {
+		return err
+	}
+	if err := TestDB.Exec("DROP TABLE IF EXISTS performance_metrics").Error; err != nil {
+		return err
+	}
+	if err := TestDB.Exec("DROP TABLE IF EXISTS security_events").Error; err != nil {
+		return err
+	}
+
+	// 重新运行迁移
+	migrationManager := Migrations.NewMigrationManager(TestDB)
+	return migrationManager.RunMigrations()
+}
+
+// MockDatabaseConfig 创建模拟数据库配置
+func MockDatabaseConfig() *Config.DatabaseConfig {
+	return &Config.DatabaseConfig{
+		Driver:            "postgres",
+		Host:              "localhost",
+		Port:              "5432",
+		Username:          "test_user",
+		Password:          "test_password",
+		Database:          "test_db",
+		Charset:           "utf8",
+		MaxOpenConns:      10,
+		MaxIdleConns:      5,
+		ConnMaxLifetime:   time.Hour,
+		ConnMaxIdleTime:   10 * time.Minute,
+		ConnectionTimeout: 30,
+		ReadTimeout:       30,
+		WriteTimeout:      30,
 	}
 }
 
-// SetupTestData 设置测试数据
-func SetupTestData() {
-	// 创建测试用户
-	testUser := Models.User{
-		Username: "testuser",
-		Email:    "test@example.com",
-		Password: "hashedpassword",
-		Role:     "user",
-	}
-
-	TestDB.Create(&testUser)
-
-	// 创建测试分类
-	testCategory := Models.Category{
-		Name:        "测试分类",
-		Description: "这是一个测试分类",
-	}
-
-	TestDB.Create(&testCategory)
-
-	// 创建测试标签
-	testTag := Models.Tag{
-		Name: "测试标签",
-	}
-
-	TestDB.Create(&testTag)
-
-	// 创建测试文章
-	testPost := Models.Post{
-		Title:      "测试文章",
-		Content:    "这是测试文章的内容",
-		UserID:     testUser.ID,
-		CategoryID: testCategory.ID,
-		Status:     1,
-	}
-
-	TestDB.Create(&testPost)
+// SetupTestEnvironment 设置测试环境
+func SetupTestEnvironment() {
+	// 设置测试环境变量
+	os.Setenv("ENVIRONMENT", "test")
+	os.Setenv("DATABASE_DRIVER", "postgres")
+	os.Setenv("DATABASE_HOST", "localhost")
+	os.Setenv("DATABASE_PORT", "5432")
+	os.Setenv("DATABASE_USERNAME", "test_user")
+	os.Setenv("DATABASE_PASSWORD", "test_password")
+	os.Setenv("DATABASE_NAME", "test_db")
 }
 
-// CleanTestData 清理测试数据
-func CleanTestData() {
-	TestDB.Exec("DELETE FROM posts")
-	TestDB.Exec("DELETE FROM tags")
-	TestDB.Exec("DELETE FROM categories")
-	TestDB.Exec("DELETE FROM users")
-	TestDB.Exec("DELETE FROM audit_logs")
+// CleanupTestEnvironment 清理测试环境
+func CleanupTestEnvironment() {
+	// 清理环境变量
+	os.Unsetenv("ENVIRONMENT")
+	os.Unsetenv("DATABASE_DRIVER")
+	os.Unsetenv("DATABASE_HOST")
+	os.Unsetenv("DATABASE_PORT")
+	os.Unsetenv("DATABASE_USERNAME")
+	os.Unsetenv("DATABASE_PASSWORD")
+	os.Unsetenv("DATABASE_NAME")
+}
+
+// TestContext 创建测试上下文
+func TestContext() context.Context {
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
+	return ctx
 }

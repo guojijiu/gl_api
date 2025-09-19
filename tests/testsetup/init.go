@@ -80,9 +80,14 @@ func Init() {
 // 5. 初始化TokenHelper
 func (ts *TestSuite) SetupSuite() {
 	// 设置测试环境变量
+	os.Setenv("ENVIRONMENT", "test")
 	os.Setenv("SERVER_MODE", "test")
-	os.Setenv("DATABASE_DRIVER", "sqlite")
-	os.Setenv("DATABASE_NAME", ":memory:")
+	os.Setenv("DATABASE_DRIVER", "mysql")
+	os.Setenv("DATABASE_HOST", "localhost")
+	os.Setenv("DATABASE_PORT", "3306")
+	os.Setenv("DATABASE_USERNAME", "root")
+	os.Setenv("DATABASE_PASSWORD", "password")
+	os.Setenv("DATABASE_NAME", "test_db")
 	os.Setenv("JWT_SECRET", "test-jwt-secret-key-for-testing-only-32-chars")
 
 	// 加载配置
@@ -276,8 +281,12 @@ func (ts *TestSuite) AssertTokenInvalid(token string) {
 func setTestEnvironment() {
 	envVars := map[string]string{
 		"SERVER_MODE":      "test",
-		"DB_DRIVER":        "sqlite",
-		"DB_DATABASE":      ":memory:",
+		"DB_DRIVER":        "mysql",
+		"DB_HOST":          "localhost",
+		"DB_PORT":          "3306",
+		"DB_USERNAME":      "root",
+		"DB_PASSWORD":      "password",
+		"DB_DATABASE":      "test_db",
 		"JWT_SECRET":       "test-jwt-secret-key-for-testing-only-32-chars",
 		"REDIS_HOST":       "",
 		"LOG_LEVEL":        "error",

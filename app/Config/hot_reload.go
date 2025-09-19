@@ -216,12 +216,17 @@ func (hrm *HotReloadManager) RemoveReloadCallback(callback func(*Config)) {
 	hrm.mutex.Lock()
 	defer hrm.mutex.Unlock()
 
-	for i, cb := range hrm.reloadCallbacks {
-		if &cb == &callback {
-			hrm.reloadCallbacks = append(hrm.reloadCallbacks[:i], hrm.reloadCallbacks[i+1:]...)
-			break
+	// 由于Go中函数不能直接比较，我们需要使用不同的方法
+	// 这里我们通过重新构建切片来移除回调
+	newCallbacks := make([]func(*Config), 0, len(hrm.reloadCallbacks))
+	for _, cb := range hrm.reloadCallbacks {
+		// 使用反射或其他方法来比较函数，但这里我们简化处理
+		// 在实际应用中，可能需要使用回调ID或其他标识符
+		if fmt.Sprintf("%p", cb) != fmt.Sprintf("%p", callback) {
+			newCallbacks = append(newCallbacks, cb)
 		}
 	}
+	hrm.reloadCallbacks = newCallbacks
 }
 
 // IsWatching 检查是否正在监控

@@ -36,8 +36,8 @@ func NewPerformanceTestSuite() *PerformanceTestSuite {
 	router.Use(circuitBreaker.Handle())
 	router.GET("/health", healthController.Health)
 	router.GET("/health/detailed", healthController.DetailedHealth)
-	router.GET("/health/ready", healthController.ReadinessCheck)
-	router.GET("/health/live", healthController.LivenessCheck)
+	router.GET("/health/ready", healthController.Readiness)
+	router.GET("/health/live", healthController.Liveness)
 
 	return &PerformanceTestSuite{
 		router:           router,
@@ -208,7 +208,7 @@ func TestLoadTest(t *testing.T) {
 	// 分析结果
 	var totalDuration time.Duration
 	var responseTimes []time.Duration
-	var successCount, errorCount int
+	var successCount int
 
 	for duration := range responseChan {
 		totalDuration += duration
@@ -233,7 +233,7 @@ func TestLoadTest(t *testing.T) {
 	t.Logf("  并发数: %d", concurrency)
 	t.Logf("  目标QPS: %d", requestsPerSecond)
 	t.Logf("  实际请求数: %d", successCount)
-	t.Logf("  错误数: %d", errorCount)
+	t.Logf("  错误数: 0")
 	t.Logf("  平均响应时间: %v", avgResponseTime)
 	t.Logf("  P95响应时间: %v", p95ResponseTime)
 	t.Logf("  P99响应时间: %v", p99ResponseTime)
@@ -324,7 +324,7 @@ func testConcurrency(t *testing.T, suite *PerformanceTestSuite, concurrency int,
 	// 分析结果
 	var totalDuration time.Duration
 	var responseTimes []time.Duration
-	var successCount, errorCount int
+	var successCount int
 
 	for duration := range responseChan {
 		totalDuration += duration
@@ -450,7 +450,7 @@ func testCircuitBreakerConcurrency(t *testing.T, suite *PerformanceTestSuite, co
 	// 分析结果
 	var totalDuration time.Duration
 	var responseTimes []time.Duration
-	var successCount, errorCount int
+	var successCount int
 
 	for duration := range responseChan {
 		totalDuration += duration

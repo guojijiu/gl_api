@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Http/Middleware"
 	"cloud-platform-api/app/Storage"
 	"net/http"
@@ -19,7 +20,7 @@ func TestSQLInjectionDetection(t *testing.T) {
 	router := gin.New()
 
 	// 创建存储管理器
-	storageConfig := &Storage.StorageConfig{
+	storageConfig := &Config.StorageConfig{
 		BasePath: "./storage/test",
 	}
 	storageManager := Storage.NewStorageManager(storageConfig)
@@ -82,7 +83,7 @@ func TestXSSDetection(t *testing.T) {
 	router := gin.New()
 
 	// 创建存储管理器
-	storageConfig := &Storage.StorageConfig{
+	storageConfig := &Config.StorageConfig{
 		BasePath: "./storage/test",
 	}
 	storageManager := Storage.NewStorageManager(storageConfig)
@@ -145,10 +146,10 @@ func TestRequestSizeValidation(t *testing.T) {
 	router := gin.New()
 
 	// 创建存储管理器
-	storageConfig := &Storage.StorageConfig{
+	storageConfig := &Config.StorageConfig{
 		BasePath: "./storage/test",
 	}
-	storageManager := Storage.NewStorageManager(storageManager)
+	storageManager := Storage.NewStorageManager(storageConfig)
 
 	// 创建验证中间件，设置较小的请求大小限制
 	config := &Middleware.ValidationConfig{
@@ -182,7 +183,7 @@ func TestFileUploadValidation(t *testing.T) {
 	router := gin.New()
 
 	// 创建存储管理器
-	storageConfig := &Storage.StorageConfig{
+	storageConfig := &Config.StorageConfig{
 		BasePath: "./storage/test",
 	}
 	storageManager := Storage.NewStorageManager(storageConfig)

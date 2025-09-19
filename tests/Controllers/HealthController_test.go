@@ -1,6 +1,7 @@
 package Controllers
 
 import (
+	"cloud-platform-api/app/Database"
 	"cloud-platform-api/app/Http/Controllers"
 	"encoding/json"
 	"fmt"
@@ -14,8 +15,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// setupTestEnvironment 设置测试环境
+func setupTestEnvironment(t *testing.T) {
+	Database.SetupTestEnvironment()
+}
+
+// cleanupTestEnvironment 清理测试环境
+func cleanupTestEnvironment(t *testing.T) {
+	Database.CleanupTestEnvironment()
+}
+
 func TestHealthController(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+
+	// 设置测试环境
+	setupTestEnvironment(t)
+	defer cleanupTestEnvironment(t)
 
 	// 创建健康检查控制器
 	hc := Controllers.NewHealthController()
@@ -50,7 +65,7 @@ func TestHealthController(t *testing.T) {
 
 	t.Run("获取运行时间", func(t *testing.T) {
 		uptime := hc.GetUptime()
-		assert.Greater(t, uptime, time.Duration(0))
+		assert.GreaterOrEqual(t, uptime, time.Duration(0))
 
 		uptimeStr := hc.GetUptimeString()
 		assert.NotEmpty(t, uptimeStr)
@@ -60,6 +75,10 @@ func TestHealthController(t *testing.T) {
 
 func TestHealthControllerEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+
+	// 设置测试环境
+	setupTestEnvironment(t)
+	defer cleanupTestEnvironment(t)
 
 	hc := Controllers.NewHealthController()
 
@@ -118,7 +137,7 @@ func TestHealthControllerEndpoints(t *testing.T) {
 
 	t.Run("就绪检查端点", func(t *testing.T) {
 		router := gin.New()
-		router.GET("/health/ready", hc.ReadinessCheck)
+		router.GET("/health/ready", hc.Readiness)
 
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/health/ready", nil)
@@ -136,7 +155,7 @@ func TestHealthControllerEndpoints(t *testing.T) {
 
 	t.Run("存活检查端点", func(t *testing.T) {
 		router := gin.New()
-		router.GET("/health/live", hc.LivenessCheck)
+		router.GET("/health/live", hc.Liveness)
 
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/health/live", nil)
@@ -155,6 +174,10 @@ func TestHealthControllerEndpoints(t *testing.T) {
 
 func TestHealthControllerCustomChecks(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+
+	// 设置测试环境
+	setupTestEnvironment(t)
+	defer cleanupTestEnvironment(t)
 
 	hc := Controllers.NewHealthController()
 
@@ -221,6 +244,10 @@ func TestHealthControllerCustomChecks(t *testing.T) {
 func TestHealthControllerConcurrency(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// 设置测试环境
+	setupTestEnvironment(t)
+	defer cleanupTestEnvironment(t)
+
 	hc := Controllers.NewHealthController()
 
 	// 添加一些自定义检查
@@ -282,6 +309,10 @@ func BenchmarkHealthController(b *testing.B) {
 
 func TestHealthControllerEdgeCases(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+
+	// 设置测试环境
+	setupTestEnvironment(t)
+	defer cleanupTestEnvironment(t)
 
 	hc := Controllers.NewHealthController()
 

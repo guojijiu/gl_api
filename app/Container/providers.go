@@ -91,7 +91,9 @@ func (p *BusinessServiceProvider) Register(container *Container) error {
 
 	// 注册缓存服务
 	container.RegisterSingleton("cache_service", func() interface{} {
-		return Services.NewOptimizedCacheService()
+		storageConfig, _ := container.Get("storage_config")
+		storageManager := Storage.NewStorageManager(storageConfig.(*Config.StorageConfig))
+		return Services.NewCacheService(storageManager)
 	})
 
 	// 注册监控服务

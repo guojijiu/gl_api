@@ -29,7 +29,7 @@ type DatabaseConfig struct {
 
 // SetDefaults 设置数据库配置默认值
 func (d *DatabaseConfig) SetDefaults() {
-	viper.SetDefault("database.driver", "sqlite")
+	viper.SetDefault("database.driver", "mysql")
 	viper.SetDefault("database.host", "localhost")
 	viper.SetDefault("database.port", "3306")
 	viper.SetDefault("database.charset", "utf8mb4")
