@@ -201,12 +201,13 @@ func isUnauthorizedError(err error) bool {
 
 func isForbiddenError(err error) bool {
 	return err != nil && (contains(err.Error(), "forbidden") ||
-		contains(err.Error(), "permission denied") ||
+		contains(err.Error(), "access denied") ||
 		contains(err.Error(), "禁止"))
 }
 
 func isConflictError(err error) bool {
-	return err != nil && (contains(err.Error(), "already exists") ||
+	return err != nil && (contains(err.Error(), "conflict") ||
+		contains(err.Error(), "already exists") ||
 		contains(err.Error(), "duplicate") ||
 		contains(err.Error(), "冲突"))
 }
@@ -221,35 +222,32 @@ func isDatabaseError(err error) bool {
 	return err != nil && (contains(err.Error(), "database") ||
 		contains(err.Error(), "sql") ||
 		contains(err.Error(), "connection") ||
-		contains(err.Error(), "transaction"))
+		contains(err.Error(), "数据库"))
 }
 
 func isNetworkError(err error) bool {
 	return err != nil && (contains(err.Error(), "network") ||
-		contains(err.Error(), "connection") ||
+		contains(err.Error(), "connection refused") ||
 		contains(err.Error(), "timeout") ||
-		contains(err.Error(), "unreachable"))
+		contains(err.Error(), "网络"))
 }
 
 func isTimeoutError(err error) bool {
 	return err != nil && (contains(err.Error(), "timeout") ||
-		contains(err.Error(), "deadline") ||
+		contains(err.Error(), "deadline exceeded") ||
 		contains(err.Error(), "超时"))
 }
 
 func isFileError(err error) bool {
 	return err != nil && (contains(err.Error(), "file") ||
-		contains(err.Error(), "upload") ||
-		contains(err.Error(), "download") ||
-		contains(err.Error(), "permission denied"))
+		contains(err.Error(), "directory") ||
+		contains(err.Error(), "permission denied") ||
+		contains(err.Error(), "文件"))
 }
 
+// contains 检查字符串是否包含子字符串（不区分大小写）
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr ||
-		(len(s) > len(substr) &&
-			(s[:len(substr)] == substr ||
-				s[len(s)-len(substr):] == substr ||
-				strings.Contains(s, substr))))
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
 // logError 记录错误日志

@@ -2,30 +2,31 @@ package Controllers
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
 )
 
 // Controller 基础控制器
-// 
+//
 // 重要功能说明：
 // 1. 统一响应格式：提供标准化的成功、错误、验证失败等响应方法
 // 2. 分页支持：标准化的分页参数验证和响应格式
 // 3. 用户认证：获取当前用户信息和角色，支持权限验证
 // 4. 错误处理：统一的HTTP状态码和错误消息处理
 // 5. 输入验证：分页参数验证和标准化
-// 
+//
 // 安全特性：
 // - 统一的错误响应格式，避免信息泄露
 // - 用户身份验证和角色检查
 // - 输入参数验证和清理
-// 
+//
 // 响应格式标准：
 // - 成功响应：{"success": true, "message": "...", "data": {...}}
 // - 错误响应：{"success": false, "message": "...", "error": "..."}
 // - 分页响应：包含meta字段，包含分页信息
-// 
+//
 // 使用注意事项：
 // - 所有控制器都应该继承此基础控制器
 // - 使用统一的响应方法确保API一致性
@@ -102,8 +103,8 @@ func (c *Controller) ServerError(ctx *gin.Context, message string) {
 func (c *Controller) TooManyRequests(ctx *gin.Context, message string, retryAfter int) {
 	ctx.Header("Retry-After", strconv.Itoa(retryAfter))
 	ctx.JSON(http.StatusTooManyRequests, gin.H{
-		"success": false,
-		"message": message,
+		"success":     false,
+		"message":     message,
 		"retry_after": retryAfter,
 	})
 }
@@ -162,23 +163,38 @@ func (c *Controller) GetCurrentUser(ctx *gin.Context) (uint, error) {
 	if !exists {
 		return 0, fmt.Errorf("user not authenticated")
 	}
-	
-	// 支持多种类型转换
+
+	// 支持多种类型转换，增加错误处理
 	switch v := userID.(type) {
 	case uint:
+		if v == 0 {
+			return 0, fmt.Errorf("invalid user ID: cannot be zero")
+		}
 		return v, nil
 	case int:
+		if v <= 0 {
+			return 0, fmt.Errorf("invalid user ID: must be positive")
+		}
 		return uint(v), nil
 	case int64:
+		if v <= 0 {
+			return 0, fmt.Errorf("invalid user ID: must be positive")
+		}
 		return uint(v), nil
 	case string:
 		// 如果是字符串，尝试转换为uint
+		if v == "" {
+			return 0, fmt.Errorf("invalid user ID: cannot be empty string")
+		}
 		if id, err := strconv.ParseUint(v, 10, 32); err == nil {
+			if id == 0 {
+				return 0, fmt.Errorf("invalid user ID: cannot be zero")
+			}
 			return uint(id), nil
 		}
-		return 0, fmt.Errorf("invalid user ID format")
+		return 0, fmt.Errorf("invalid user ID format: %s", v)
 	default:
-		return 0, fmt.Errorf("invalid user ID type: %T", userID)
+		return 0, fmt.Errorf("invalid user ID type: %T, value: %v", userID, userID)
 	}
 }
 
@@ -192,11 +208,11 @@ func (c *Controller) GetCurrentUserRole(ctx *gin.Context) string {
 	if !exists {
 		return ""
 	}
-	
+
 	if roleStr, ok := role.(string); ok {
 		return roleStr
 	}
-	
+
 	return ""
 }
 
@@ -217,10 +233,10 @@ func (c *Controller) IsAdmin(ctx *gin.Context) bool {
 func (c *Controller) ValidatePagination(ctx *gin.Context) (page, pageSize int) {
 	pageStr := ctx.DefaultQuery("page", "1")
 	pageSizeStr := ctx.DefaultQuery("page_size", "10")
-	
+
 	page, _ = strconv.Atoi(pageStr)
 	pageSize, _ = strconv.Atoi(pageSizeStr)
-	
+
 	// 设置默认值和限制
 	if page < 1 {
 		page = 1
@@ -231,7 +247,6 @@ func (c *Controller) ValidatePagination(ctx *gin.Context) (page, pageSize int) {
 	if pageSize > 100 {
 		pageSize = 100 // 限制最大页面大小
 	}
-	
+
 	return page, pageSize
 }
-

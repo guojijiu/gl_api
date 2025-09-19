@@ -329,7 +329,8 @@ func initDB() {
 		// 根据错误类型决定是否重试
 		if !shouldRetry(errorType, attempt, maxRetries) {
 			log.Printf("错误类型 %s 不支持重试，停止重试", errorType)
-			// 对于不支持重试的错误，直接返回错误而不是继续循环
+			// 对于不支持重试的错误，直接退出并记录致命错误
+			log.Fatal("数据库连接失败，不支持重试的错误类型:", err)
 			return
 		}
 
@@ -351,10 +352,11 @@ func initDB() {
 		log.Fatal("Failed to get sql.DB:", err)
 	}
 
-	// 设置连接池参数
-	sqlDB.SetMaxIdleConns(10)           // 最大空闲连接数
-	sqlDB.SetMaxOpenConns(100)          // 最大打开连接数
-	sqlDB.SetConnMaxLifetime(time.Hour) // 连接最大生命周期
+	// 设置连接池参数 - 优化性能
+	sqlDB.SetMaxIdleConns(20)                  // 最大空闲连接数（增加以保持连接池活跃）
+	sqlDB.SetMaxOpenConns(200)                 // 最大打开连接数（增加以支持高并发）
+	sqlDB.SetConnMaxLifetime(30 * time.Minute) // 连接最大生命周期（减少以避免长时间占用）
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)  // 空闲连接最大生存时间（新增）
 
 	// 测试数据库连接
 	if err := sqlDB.Ping(); err != nil {

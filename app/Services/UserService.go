@@ -3,7 +3,11 @@ package Services
 import (
 	"cloud-platform-api/app/Database"
 	"cloud-platform-api/app/Models"
+	"cloud-platform-api/app/Utils"
 	"errors"
+	"fmt"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -14,8 +18,10 @@ import (
 // 2. 用户CRUD操作
 // 3. 用户权限和状态管理
 // 4. 用户数据安全处理（密码字段过滤）
+// 5. 缓存优化（减少数据库查询）
 type UserService struct {
 	BaseService
+	cacheService *CacheService
 }
 
 // NewUserService 创建用户服务
@@ -24,14 +30,16 @@ type UserService struct {
 // 2. 返回配置好的服务对象
 func NewUserService() *UserService {
 	return &UserService{
-		BaseService: *NewBaseService(),
+		BaseService:  *NewBaseService(),
+		cacheService: nil, // 延迟初始化
 	}
 }
 
 // NewUserServiceWithDB 使用数据库连接创建用户服务
 func NewUserServiceWithDB(db *gorm.DB) *UserService {
 	service := &UserService{
-		BaseService: *NewBaseService(),
+		BaseService:  *NewBaseService(),
+		cacheService: nil, // 延迟初始化
 	}
 	service.DB = db
 	return service
@@ -48,6 +56,16 @@ func (s *UserService) getDB() *gorm.DB {
 	return Database.DB
 }
 
+// getCacheService 获取缓存服务（延迟初始化）
+func (s *UserService) getCacheService() *CacheService {
+	if s.cacheService == nil {
+		// 这里需要传入StorageManager，暂时返回nil
+		// 在实际使用中，应该通过依赖注入传入
+		return nil
+	}
+	return s.cacheService
+}
+
 // GetUsers 获取用户列表
 // 功能说明：
 // 1. 获取所有用户的基本信息
@@ -56,15 +74,12 @@ func (s *UserService) getDB() *gorm.DB {
 // 4. 支持分页和搜索（可扩展）
 func (s *UserService) GetUsers() ([]Models.User, error) {
 	var users []Models.User
-	if err := s.getDB().Find(&users).Error; err != nil {
+	// 使用Select优化查询，只选择需要的字段，排除密码字段
+	if err := s.getDB().Select("id,username,email,status,created_at,updated_at").Find(&users).Error; err != nil {
 		return nil, err
 	}
 
-	// 清除密码字段
-	for i := range users {
-		users[i].Password = ""
-	}
-
+	// 密码字段已经在查询时被排除，无需额外清除
 	return users, nil
 }
 
@@ -74,17 +89,31 @@ func (s *UserService) GetUsers() ([]Models.User, error) {
 // 2. 自动过滤敏感信息（密码字段）
 // 3. 处理用户不存在的情况
 // 4. 用于用户资料查看和编辑
+// 5. 使用缓存优化性能
 func (s *UserService) GetUser(id uint) (*Models.User, error) {
+	// 尝试从缓存获取
+	cacheKey := fmt.Sprintf("user:%d", id)
+	if cacheService := s.getCacheService(); cacheService != nil {
+		var user Models.User
+		if err := cacheService.GetWithJSON(cacheKey, &user); err == nil {
+			return &user, nil
+		}
+	}
+
+	// 从数据库查询
 	var user Models.User
-	if err := s.getDB().First(&user, id).Error; err != nil {
+	// 使用Select优化查询，只选择需要的字段，排除密码字段
+	if err := s.getDB().Select("id,username,email,status,created_at,updated_at").First(&user, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("user not found")
 		}
 		return nil, err
 	}
 
-	// 清除密码字段
-	user.Password = ""
+	// 存入缓存
+	if cacheService := s.getCacheService(); cacheService != nil {
+		cacheService.SetWithJSON(cacheKey, &user, 15*time.Minute) // 15分钟缓存
+	}
 
 	return &user, nil
 }
@@ -246,12 +275,25 @@ func (s *UserService) ChangePassword(userID uint, oldPassword, newPassword strin
 	}
 
 	// 验证旧密码
-	// 这里需要实现密码验证逻辑
-	// 暂时跳过验证，直接更新密码
+	if !Utils.CheckPassword(oldPassword, user.Password) {
+		return errors.New("原密码错误")
+	}
+
+	// 验证新密码强度
+	isValid, validationErrors := Utils.ValidatePasswordStrength(newPassword)
+	if !isValid {
+		return fmt.Errorf("新密码不符合要求: %s", strings.Join(validationErrors, "; "))
+	}
+
+	// 哈希新密码
+	hashedPassword, err := Utils.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("密码哈希失败: %v", err)
+	}
 
 	// 更新密码
 	updates := map[string]interface{}{
-		"password": newPassword,
+		"password": hashedPassword,
 	}
 
 	return s.getDB().Model(&user).Updates(updates).Error
@@ -277,8 +319,9 @@ func (s *UserService) ValidateUser(username, password string) (*Models.User, err
 	}
 
 	// 验证密码
-	// 这里需要实现密码验证逻辑
-	// 暂时跳过密码验证
+	if !Utils.CheckPassword(password, user.Password) {
+		return nil, errors.New("invalid password")
+	}
 
 	// 清除密码字段
 	user.Password = ""

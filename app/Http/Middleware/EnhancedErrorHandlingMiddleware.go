@@ -296,7 +296,7 @@ func (m *EnhancedErrorHandlingMiddleware) classifyAndCreateError(err error, c *g
 
 	case strings.Contains(errStr, "already exists") || strings.Contains(errStr, "duplicate"):
 		return Utils.NewErrorBuilder().
-			Message("Resource conflict").
+			Message("Resource already exists").
 			Code("CONFLICT").
 			Level(Utils.ErrorLevelError).
 			Context("status_code", http.StatusConflict).
@@ -311,45 +311,31 @@ func (m *EnhancedErrorHandlingMiddleware) classifyAndCreateError(err error, c *g
 			Code("RATE_LIMIT").
 			Level(Utils.ErrorLevelError).
 			Context("status_code", http.StatusTooManyRequests).
-			Context("category", Utils.CategoryAuth).
+			Context("category", Utils.CategoryUser).
 			Severity(Utils.SeverityMedium).
 			Details(err.Error()).
 			Build()
 
 	case strings.Contains(errStr, "database") || strings.Contains(errStr, "sql"):
 		return Utils.NewErrorBuilder().
-			Message("Database operation failed").
+			Message("Database error").
 			Code("DATABASE_ERROR").
 			Level(Utils.ErrorLevelError).
 			Context("status_code", http.StatusInternalServerError).
-			Context("category", Utils.CategoryDatabase).
+			Context("category", Utils.CategorySystem).
 			Severity(Utils.SeverityHigh).
 			Details(err.Error()).
-			Context("retryable", true).
 			Build()
 
-	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection"):
-		return Utils.NewErrorBuilder().
-			Message("Network error").
-			Code("NETWORK_ERROR").
-			Level(Utils.ErrorLevelError).
-			Context("status_code", http.StatusBadGateway).
-			Context("category", Utils.CategoryNetwork).
-			Severity(Utils.SeverityHigh).
-			Details(err.Error()).
-			Context("retryable", true).
-			Build()
-
-	case strings.Contains(errStr, "timeout"):
+	case strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline"):
 		return Utils.NewErrorBuilder().
 			Message("Request timeout").
 			Code("TIMEOUT").
 			Level(Utils.ErrorLevelError).
 			Context("status_code", http.StatusRequestTimeout).
-			Context("category", Utils.CategoryNetwork).
+			Context("category", Utils.CategorySystem).
 			Severity(Utils.SeverityMedium).
 			Details(err.Error()).
-			Context("retryable", true).
 			Build()
 
 	default:

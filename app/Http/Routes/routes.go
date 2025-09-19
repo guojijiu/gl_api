@@ -57,19 +57,31 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	rateLimitMiddleware := Middleware.NewRateLimitMiddleware(storageManager)
 	versionMiddleware := Middleware.NewVersionMiddleware(storageManager)
 
+	// 创建增强的验证中间件
+	validationMiddleware := Middleware.NewEnhancedValidationMiddleware(storageManager, nil)
+
+	// 创建请求统计中间件
+	monitoringService := Services.NewOptimizedMonitoringService()
+	requestStatsMiddleware := Middleware.NewRequestStatsMiddleware(storageManager, monitoringService)
+
 	// 添加全局中间件
 	// 注意：中间件的执行顺序很重要
 	// 1. 错误恢复（最先执行，捕获panic）
 	// 2. 安全中间件（CORS、请求大小限制、XSS防护）
-	// 3. 性能中间件（超时、速率限制）
-	// 4. 日志中间件（请求日志、SQL日志）
-	// 5. 业务中间件（认证、权限等）
+	// 3. 验证中间件（输入验证、SQL注入检测、XSS防护）
+	// 4. 性能中间件（超时、速率限制）
+	// 5. 日志中间件（请求日志、SQL日志）
+	// 6. 业务中间件（认证、权限等）
 	engine.Use(
 		recoveryMiddleware.Handle(),                    // 错误恢复中间件（最先执行，只处理panic）
 		corsMiddleware.Handle(),                        // CORS中间件
+		validationMiddleware.Handle(),                  // 增强的验证中间件
+		validationMiddleware.ValidateJSON(),            // JSON验证中间件
+		validationMiddleware.ValidateFileUpload(),      // 文件上传验证中间件
 		timeoutMiddleware.Handle(30*time.Second),       // 请求超时中间件
 		rateLimitMiddleware.Handle(100, 1*time.Minute), // 全局速率限制
 		performanceMiddleware.Handle(),                 // 性能监控中间件
+		requestStatsMiddleware.Handle(),                // 请求统计中间件
 		requestLogMiddleware.RequestLog(),              // 自定义请求日志
 		sqlLogMiddleware.Handle(),                      // SQL日志中间件
 		errorHandlingMiddleware.Handle(),               // 错误处理中间件（处理业务错误，不处理panic）

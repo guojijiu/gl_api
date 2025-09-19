@@ -100,7 +100,14 @@ func NewApp() *App {
 	}
 
 	// 初始化缓存服务
-	cacheService := Services.NewOptimizedCacheService()
+	cacheService := Services.NewCacheService(storageManager)
+
+	// 预热缓存（如果Redis可用）
+	if redisService != nil {
+		if err := cacheService.WarmCache(); err != nil {
+			log.Printf("警告: 缓存预热失败: %v", err)
+		}
+	}
 
 	// 使用LogManagerService初始化数据库（启用SQL日志）
 	Database.InitDBWithLogManager(logManager)
@@ -118,13 +125,6 @@ func NewApp() *App {
 
 	// 自动迁移数据库表
 	Database.AutoMigrate()
-
-	// 预热缓存（如果Redis可用）
-	if redisService != nil {
-		if err := cacheService.WarmCache(); err != nil {
-			log.Printf("警告: 缓存预热失败: %v", err)
-		}
-	}
 
 	// 记录应用启动日志到对应的日志类型中
 	startupCtx := context.Background()
@@ -150,7 +150,7 @@ func NewApp() *App {
 	// 记录缓存信息到业务日志
 	logManager.LogBusiness(startupCtx, "cache", "startup", "缓存服务初始化", map[string]interface{}{
 		"redis_enabled": redisService != nil,
-		"cache_enabled": cacheService != nil,
+		"cache_enabled": false, // 暂时禁用缓存
 		"cache_type": func() string {
 			if redisService != nil {
 				return "redis"

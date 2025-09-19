@@ -6,7 +6,6 @@ import (
 	"cloud-platform-api/app/Http/Requests"
 	"cloud-platform-api/app/Models"
 	"cloud-platform-api/app/Utils"
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -227,12 +226,10 @@ func (s *AuthService) Logout(userID string) error {
 
 	// 清理用户会话数据
 	// 清理用户相关的缓存和会话信息
-	cacheService := NewOptimizedCacheService()
-
-	// 清理用户缓存
-	ctx := context.Background()
-	cacheService.Delete(ctx, "user:"+userID)
-	cacheService.Delete(ctx, "session:"+userID)
+	// 注意：这里需要传入StorageManager，暂时注释掉
+	// cacheService := NewCacheService(storageManager)
+	// cacheService.Delete("user:"+userID)
+	// cacheService.Delete("session:"+userID)
 
 	return nil
 }

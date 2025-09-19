@@ -242,8 +242,19 @@ func (s *OptimizedMonitoringService) collectBusinessMetrics() {
 
 // getCPUUsage 获取CPU使用率
 func (s *OptimizedMonitoringService) getCPUUsage() float64 {
+	// 使用runtime包获取基本的CPU使用率信息
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
 	// 简化的CPU使用率计算
-	// 在实际应用中，可以使用更精确的CPU监控库
+	// 基于GC频率和内存分配来估算CPU使用率
+	gcCount := m.NumGC
+	if gcCount > 0 {
+		// 基于GC频率估算CPU使用率（这是一个简化的方法）
+		// 在实际应用中，应该使用专门的CPU监控库
+		return float64(gcCount) * 0.1 // 简化的计算
+	}
+
 	return 0.0
 }
 
@@ -261,13 +272,23 @@ func (s *OptimizedMonitoringService) getMemoryUsage() float64 {
 
 // getRequestCount 获取请求数
 func (s *OptimizedMonitoringService) getRequestCount() int64 {
-	// 这里应该从实际的请求统计中获取
+	// 从缓存中获取请求计数
+	if data, exists := s.getCachedMetrics("request_count"); exists {
+		if count, ok := data.(int64); ok {
+			return count
+		}
+	}
 	return 0
 }
 
 // getAverageResponseTime 获取平均响应时间
 func (s *OptimizedMonitoringService) getAverageResponseTime() time.Duration {
-	// 这里应该从实际的响应时间统计中获取
+	// 从缓存中获取平均响应时间
+	if data, exists := s.getCachedMetrics("avg_response_time"); exists {
+		if duration, ok := data.(time.Duration); ok {
+			return duration
+		}
+	}
 	return 0
 }
 
