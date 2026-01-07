@@ -5,6 +5,7 @@ import (
 	"cloud-platform-api/app/Http/Middleware"
 	"cloud-platform-api/app/Services"
 	"cloud-platform-api/app/Storage"
+	"context"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -137,17 +138,17 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	// 健康检查端点
 	// 这些端点不经过认证中间件，用于监控和负载均衡器检查
 	healthController := Controllers.NewHealthController()
-	
+
 	// 基础健康检查：快速检查服务是否运行
 	engine.GET("/health", healthController.Health)
-	
+
 	// 详细健康检查：包含系统资源、数据库、缓存等详细信息
 	engine.GET("/health/detailed", healthController.DetailedHealth)
-	
+
 	// 就绪检查：检查服务是否准备好接受请求
 	// 用于Kubernetes的readiness probe
 	engine.GET("/health/ready", healthController.Readiness)
-	
+
 	// 存活检查：检查服务是否存活
 	// 用于Kubernetes的liveness probe
 	engine.GET("/health/live", healthController.Liveness)
@@ -191,6 +192,7 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	// 用户管理路由
 	userController := Controllers.NewUserController()
 	userGroup := v1.Group("/users")
+	userGroup.Use(Middleware.NewAuthMiddleware().Handle())
 	{
 		userGroup.GET("/", userController.GetUsers)
 		userGroup.GET("/:id", userController.GetUser)
@@ -256,7 +258,8 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	}
 
 	// 记录路由注册完成日志
-	logManager.Info("routes", "所有路由注册完成", map[string]interface{}{
+	// 使用 business 日志记录器，因为路由注册属于业务逻辑
+	logManager.LogBusiness(context.Background(), "routes", "register", "所有路由注册完成", map[string]interface{}{
 		"total_routes": len(engine.Routes()),
 		"api_version":  "v1",
 		"base_path":    "/api/v1",

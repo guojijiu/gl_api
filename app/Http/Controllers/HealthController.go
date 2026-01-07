@@ -1,6 +1,7 @@
 package Controllers
 
 import (
+	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Database"
 	"cloud-platform-api/app/Services"
 	"cloud-platform-api/app/Storage"
@@ -348,12 +349,24 @@ func (hc *HealthController) checkDatabaseHealth() ServiceHealth {
 func (hc *HealthController) checkRedisHealth() ServiceHealth {
 	start := time.Now()
 
-	if hc.redisClient == nil {
+	// Redis是可选的，如果没有配置Redis，返回healthy状态
+	redisConfig := Config.GetRedisConfig()
+	if redisConfig == nil || redisConfig.Host == "" {
 		return ServiceHealth{
-			Status:       "unhealthy",
+			Status:       "healthy",
 			ResponseTime: time.Since(start),
-			Message:      "Redis client is nil",
+			Message:      "Redis is not configured (optional)",
 		}
+	}
+
+	// Redis已配置，需要检查连接
+	if hc.redisClient == nil {
+		// 尝试初始化Redis客户端
+		hc.redisClient = redis.NewClient(&redis.Options{
+			Addr:     fmt.Sprintf("%s:%d", redisConfig.Host, redisConfig.Port),
+			Password: redisConfig.Password,
+			DB:       redisConfig.Database,
+		})
 	}
 
 	// 执行ping命令
@@ -512,8 +525,34 @@ func (hc *HealthController) checkDatabase() bool {
 
 // checkRedis 检查Redis连接
 func (hc *HealthController) checkRedis() bool {
+	// Redis是可选的，如果没有配置Redis，则认为就绪
+	redisConfig := Config.GetRedisConfig()
+	if redisConfig == nil || redisConfig.Host == "" {
+		// Redis未配置，认为是可选的，返回true
+		return true
+	}
+
+	// Redis已配置，需要检查连接
 	if hc.redisClient == nil {
-		return false
+		// 尝试初始化Redis客户端
+		redisService := Services.NewRedisService(&Services.RedisConfig{
+			Host:     redisConfig.Host,
+			Port:     redisConfig.Port,
+			Password: redisConfig.Password,
+			DB:       redisConfig.Database,
+		})
+		// 测试连接
+		if err := redisService.Ping(); err != nil {
+			return false
+		}
+		// 连接成功，保存客户端引用（通过反射获取内部client）
+		// 注意：这里我们直接使用redisService，但HealthController需要*redis.Client
+		// 为了简化，我们创建一个新的客户端
+		hc.redisClient = redis.NewClient(&redis.Options{
+			Addr:     fmt.Sprintf("%s:%d", redisConfig.Host, redisConfig.Port),
+			Password: redisConfig.Password,
+			DB:       redisConfig.Database,
+		})
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -191,6 +191,9 @@ func NewLogManagerService(config *Config.LogConfig) *LogManagerService {
 func (s *LogManagerService) initLoggers() {
 	if s.config.RequestLog.Enabled {
 		s.createLogger("request", s.config.RequestLog, s.config.RequestLog.Path)
+		fmt.Printf("[INFO] 请求日志记录器已初始化，路径: %s\n", s.config.RequestLog.Path)
+	} else {
+		fmt.Printf("[WARN] 请求日志未启用，请检查 REQUEST_LOG_ENABLED 环境变量\n")
 	}
 	if s.config.SQLLog.Enabled {
 		s.createLogger("sql", s.config.SQLLog, s.config.SQLLog.Path)
@@ -466,6 +469,8 @@ func (s *LogManagerService) LogWithContext(ctx context.Context, loggerName strin
 // 专用日志方法
 func (s *LogManagerService) LogRequest(ctx context.Context, method, path string, statusCode int, duration time.Duration, fields map[string]interface{}) {
 	if !s.config.RequestLog.Enabled {
+		// 调试信息：请求日志未启用
+		fmt.Printf("[DEBUG] 请求日志未启用，跳过记录: %s %s\n", method, path)
 		return
 	}
 
@@ -744,7 +749,12 @@ func (s *LogManagerService) writeLogSync(entry LogEntry) {
 	s.mu.RUnlock()
 
 	// 检查日志记录器是否存在和启用
-	if !exists || !logger.enabled {
+	if !exists {
+		fmt.Printf("[DEBUG] 日志记录器不存在: %s\n", entry.Logger)
+		return
+	}
+	if !logger.enabled {
+		fmt.Printf("[DEBUG] 日志记录器未启用: %s\n", entry.Logger)
 		return
 	}
 

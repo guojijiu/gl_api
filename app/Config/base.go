@@ -202,17 +202,17 @@ func LoadConfig() {
 
 	// 验证配置完整性
 	// 检查必需配置项，如果缺失则设置默认值或退出
-	
+
 	// 服务器端口：如果未配置，使用默认值8080
 	if globalConfig.Server.Port == "" {
 		globalConfig.Server.Port = "8080"
 	}
-	
+
 	// 数据库驱动：如果未配置，使用默认值sqlite
 	if globalConfig.Database.Driver == "" {
 		globalConfig.Database.Driver = "sqlite"
 	}
-	
+
 	// JWT密钥：必须配置，否则退出程序
 	// JWT密钥是安全关键配置，不能使用默认值
 	if globalConfig.JWT.Secret == "" {
@@ -257,8 +257,11 @@ func ValidateConfig() error {
 		return fmt.Errorf("JWT配置验证失败: %v", err)
 	}
 
-	if err := globalConfig.Redis.Validate(); err != nil {
-		return fmt.Errorf("Redis配置验证失败: %v", err)
+	// Redis配置验证：如果配置了Redis主机，则验证配置；否则跳过验证（Redis是可选的）
+	if globalConfig.Redis.Host != "" {
+		if err := globalConfig.Redis.Validate(); err != nil {
+			return fmt.Errorf("Redis配置验证失败: %v", err)
+		}
 	}
 
 	if err := globalConfig.Storage.Validate(); err != nil {
