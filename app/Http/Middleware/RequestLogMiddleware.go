@@ -42,42 +42,84 @@ func NewRequestLogMiddleware(logManager *Services.LogManagerService) *RequestLog
 }
 
 // RequestLog 请求日志中间件处理函数
+//
+// 功能说明：
+// 1. 记录HTTP请求和响应的详细信息
+// 2. 支持请求体和响应体的记录（可配置）
+// 3. 自动脱敏敏感字段（密码、token等）
+// 4. 记录请求处理时间和状态码
+// 5. 支持路径过滤，避免记录不需要的路径
+//
+// 记录的信息：
+// - 请求信息：方法、路径、查询参数、请求头、请求体
+// - 响应信息：状态码、响应头、响应体
+// - 性能信息：处理时间、请求大小、响应大小
+// - 用户信息：用户ID、用户名、角色（如果已认证）
+// - 客户端信息：IP地址、User-Agent、Referer
+//
+// 敏感字段脱敏：
+// - 自动检测并脱敏敏感字段（如password、token等）
+// - 支持嵌套对象和数组的递归脱敏
+// - 脱敏后的值显示为"***MASKED***"
+//
+// 性能考虑：
+// - 请求体和响应体的读取可能影响性能
+// - 可以通过配置控制是否记录请求体和响应体
+// - 大文件请求可能占用较多内存
+//
+// 使用场景：
+// - 问题排查和调试
+// - 安全审计
+// - 性能分析
+// - API使用情况统计
+//
+// 注意事项：
+// - 请求体和响应体的读取会消耗内存
+// - 敏感信息会被自动脱敏，但需要正确配置
+// - 大量日志可能占用磁盘空间，需要定期清理
 func (m *RequestLogMiddleware) RequestLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 记录开始时间，用于计算请求处理耗时
 		startTime := time.Now()
 
 		// 检查是否应该记录此路径
+		// 某些路径（如健康检查、静态资源）可能不需要记录
 		if m.shouldSkipPath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}
 
-		// 读取请求体
+		// 读取请求体（如果配置了）
+		// 注意：读取后需要重新设置到请求中，以便后续处理
 		var requestBody []byte
 		if m.config.IncludeBody && m.config.MaxBodySize > 0 {
 			requestBody = m.readRequestBody(c)
 		}
 
 		// 创建响应写入器包装器
+		// 用于捕获响应体，同时不影响正常的响应写入
 		responseWriter := &responseBodyWriter{
 			ResponseWriter: c.Writer,
 			body:           &bytes.Buffer{},
 		}
+		// 替换响应写入器，以便捕获响应体
 		c.Writer = responseWriter
 
-		// 处理请求
+		// 处理请求（执行后续中间件和处理器）
 		c.Next()
 
 		// 计算处理时间
 		duration := time.Since(startTime)
 
-		// 读取响应体
+		// 读取响应体（如果配置了）
+		// 从响应写入器包装器中获取响应体
 		var responseBody []byte
 		if m.config.IncludeBody && m.config.MaxBodySize > 0 {
 			responseBody = m.readResponseBody(responseWriter)
 		}
 
 		// 记录请求日志
+		// 包含所有请求和响应的详细信息
 		m.logRequest(c, startTime, duration, requestBody, responseBody)
 	}
 }
@@ -122,27 +164,64 @@ func (m *RequestLogMiddleware) readResponseBody(writer *responseBodyWriter) []by
 }
 
 // maskSensitiveFields 脱敏敏感字段
+//
+// 功能说明：
+// 1. 检测并脱敏JSON数据中的敏感字段
+// 2. 支持嵌套对象和数组的递归脱敏
+// 3. 非JSON格式的数据直接返回（不处理）
+//
+// 脱敏策略：
+// - 检测字段名是否包含敏感关键词（如password、token等）
+// - 将敏感字段的值替换为"***MASKED***"
+// - 递归处理嵌套对象和数组
+//
+// 支持的格式：
+// - JSON对象：{"password": "123456"} -> {"password": "***MASKED***"}
+// - 嵌套对象：{"user": {"password": "123456"}} -> {"user": {"password": "***MASKED***"}}
+// - 数组：[{"password": "123456"}] -> [{"password": "***MASKED***"}]
+//
+// 性能考虑：
+// - JSON解析和序列化可能较慢
+// - 大文件可能占用较多内存
+// - 非JSON格式的数据不处理，直接返回
+//
+// 安全考虑：
+// - 敏感字段检测基于字段名，需要正确配置
+// - 脱敏后的数据仍然可能包含其他敏感信息
+// - 建议在生产环境中谨慎记录请求体和响应体
+//
+// 注意事项：
+// - 如果JSON解析失败，返回原始数据
+// - 如果序列化失败，返回原始数据
+// - 脱敏操作不会修改原始数据，返回新数据
 func (m *RequestLogMiddleware) maskSensitiveFields(data []byte) []byte {
+	// 如果数据为空，直接返回
 	if len(data) == 0 {
 		return data
 	}
 
 	// 尝试解析JSON
+	// 如果不是JSON格式，无法进行脱敏处理
 	var jsonData map[string]interface{}
 	if err := json.Unmarshal(data, &jsonData); err != nil {
-		// 不是JSON格式，直接返回
+		// 不是JSON格式，直接返回原始数据
+		// 非JSON格式的数据（如纯文本、二进制）不进行脱敏
 		return data
 	}
 
 	// 脱敏处理
+	// 递归处理所有嵌套对象和数组
 	m.maskMap(jsonData)
 
-	// 重新序列化
+	// 重新序列化为JSON
 	result, err := json.Marshal(jsonData)
 	if err != nil {
+		// 序列化失败，返回原始数据
+		// 这通常不应该发生，但为了安全起见，返回原始数据
 		return data
 	}
 
+	// 返回脱敏后的数据
 	return result
 }
 

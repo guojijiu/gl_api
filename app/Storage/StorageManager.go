@@ -19,6 +19,7 @@ type StorageManager struct {
 	tempService *TempService
 	cache       map[string]interface{}
 	cacheMu     sync.RWMutex
+	stopChan    chan struct{}
 }
 
 // NewStorageManager 创建存储管理器
@@ -28,6 +29,7 @@ func NewStorageManager(config *Config.StorageConfig) *StorageManager {
 		services:  make(map[string]StorageService),
 		tempFiles: make(map[string]*os.File),
 		cache:     make(map[string]interface{}),
+		stopChan:  make(chan struct{}),
 	}
 
 	// 初始化默认服务
@@ -165,14 +167,49 @@ func (sm *StorageManager) CleanTempFiles() error {
 }
 
 // startCleanupTask 启动清理任务
+//
+// 功能说明：
+// 1. 定期清理临时文件和缓存，释放系统资源
+// 2. 在独立的goroutine中运行，不阻塞主流程
+// 3. 支持优雅停止，通过stopChan通道控制
+//
+// 清理内容：
+// - 清理StorageManager管理的临时文件
+// - 清理各存储服务的临时文件
+// - 释放不再使用的资源
+//
+// 实现原理：
+// - 使用time.Ticker定时触发清理任务（默认每小时一次）
+// - 使用select同时监听定时器和停止信号
+// - 当收到停止信号时，立即退出goroutine
+//
+// 优雅停止机制：
+// - Close()方法会关闭stopChan通道
+// - 关闭的通道会立即返回零值，select会立即选择该case
+// - goroutine可以立即退出，不会无限阻塞
+//
+// 注意事项：
+// - defer ticker.Stop()确保ticker资源被释放
+// - 清理任务在后台运行，不会影响服务的正常使用
+// - 如果服务异常退出，goroutine也会自动结束
 func (sm *StorageManager) startCleanupTask() {
-	ticker := time.NewTicker(1 * time.Hour) // 每小时清理一次
-	defer ticker.Stop()
+	// 创建定时器，每小时触发一次清理任务
+	// Ticker会在指定时间间隔重复发送时间到通道
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop() // 确保ticker资源被释放，避免泄漏
 
+	// 无限循环，持续监听定时器和停止信号
 	for {
 		select {
 		case <-ticker.C:
+			// 定时器触发，执行清理操作
+			// cleanup会清理临时文件和缓存，释放系统资源
 			sm.cleanup()
+		case <-sm.stopChan:
+			// 收到停止信号（stopChan被关闭）
+			// 关闭的通道会立即返回零值，select会立即选择该case
+			// 这样可以立即退出goroutine，实现优雅停止
+			return
 		}
 	}
 }
@@ -225,8 +262,50 @@ func (sm *StorageManager) GetStorageStats() map[string]interface{} {
 }
 
 // Close 关闭存储管理器
+//
+// 功能说明：
+// 1. 停止清理goroutine，避免goroutine泄漏
+// 2. 关闭临时文件服务，释放相关资源
+// 3. 清理所有临时文件，释放磁盘空间
+// 4. 释放所有相关资源
+//
+// 优雅关闭流程：
+// 1. 关闭stopChan通道，通知清理goroutine停止
+// 2. 关闭临时文件服务（如果已初始化）
+// 3. 清理所有临时文件
+// 4. 返回清理过程中的错误（如果有）
+//
+// 资源释放顺序：
+// - 先停止后台goroutine，避免在清理过程中产生新的临时文件
+// - 再关闭临时文件服务，确保其内部的清理任务也停止
+// - 最后清理所有临时文件，释放磁盘空间
+//
+// 注意事项：
+// - close(chan)操作是幂等的，多次关闭会panic
+// - 应该在服务关闭时调用，确保资源正确释放
+// - 清理所有文件可能会删除正在使用的临时文件，需要谨慎
+// - 临时文件服务可能为nil，需要检查避免panic
 func (sm *StorageManager) Close() error {
-	// 清理所有临时文件
+	// 关闭stopChan通道，发送停止信号给清理goroutine
+	// 注意：关闭通道后，所有等待该通道的goroutine都会立即收到零值
+	// 这会导致startCleanupTask中的select立即选择stopChan case并退出
+	// 如果通道已经关闭，再次关闭会panic，所以这里假设只调用一次
+	close(sm.stopChan)
+
+	// 关闭临时文件服务（如果已初始化）
+	// tempService可能为nil（懒加载），需要检查避免panic
+	// 关闭临时文件服务会停止其内部的清理goroutine并清理所有临时文件
+	if sm.tempService != nil {
+		if err := sm.tempService.Close(); err != nil {
+			// 记录错误但不中断关闭流程
+			// 即使临时文件服务关闭失败，也要继续清理其他资源
+			fmt.Printf("关闭临时文件服务失败: %v\n", err)
+		}
+	}
+
+	// 清理所有临时文件（包括未过期的）
+	// 这会在服务关闭时释放所有临时文件占用的磁盘空间
+	// 注意：可能会删除正在使用的临时文件，需要确保调用时机正确
 	return sm.CleanTempFiles()
 }
 

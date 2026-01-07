@@ -92,61 +92,111 @@ func NewAuthMiddleware() *AuthMiddleware {
 // - 最小化数据库查询
 // - 使用常量时间字符串比较
 // - 避免敏感信息泄露
+// Handle 处理认证中间件
+//
+// 功能说明：
+// 1. 从请求头中提取JWT token
+// 2. 验证token格式和有效性
+// 3. 检查token是否在黑名单中（已撤销）
+// 4. 解析token获取用户信息
+// 5. 将用户信息存储到上下文中，供后续中间件和处理器使用
+//
+// 认证流程：
+// 1. 检查Authorization请求头是否存在
+// 2. 验证token格式（必须是"Bearer <token>"格式）
+// 3. 检查token是否在黑名单中（已登出的token）
+// 4. 验证JWT token的签名和过期时间
+// 5. 提取用户信息并存储到上下文
+//
+// 安全验证：
+// - 验证token格式，防止格式错误
+// - 检查token黑名单，防止已撤销token的滥用
+// - 验证JWT签名，防止token被篡改
+// - 验证token过期时间，防止过期token的使用
+//
+// 错误处理：
+// - 缺少Authorization头：返回401 Unauthorized
+// - token格式错误：返回401 Unauthorized
+// - token已撤销：返回401 Unauthorized
+// - token无效或过期：返回401 Unauthorized
+//
+// 上下文信息：
+// - user_id：用户ID（string类型，确保类型一致性）
+// - username：用户名
+// - user_role：用户角色
+//
+// 注意事项：
+// - 必须调用c.Abort()停止后续处理（如果认证失败）
+// - user_id统一使用string类型，避免类型转换问题
+// - token黑名单检查是可选的，如果服务未初始化则跳过
 func (m *AuthMiddleware) Handle() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 从请求头中提取Authorization token
+		// 标准格式：Authorization: Bearer <token>
 		token := c.GetHeader("Authorization")
 		if token == "" {
+			// 缺少Authorization头，返回401错误
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": "Authorization header required",
 			})
-			c.Abort()
+			c.Abort() // 停止后续处理
 			return
 		}
 
 		// 检查token格式
+		// 必须是"Bearer "开头，且长度至少为7（"Bearer "的长度）
 		if len(token) < 7 || !strings.HasPrefix(token, "Bearer ") {
+			// token格式错误，返回401错误
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": "Invalid token format",
 			})
-			c.Abort()
+			c.Abort() // 停止后续处理
 			return
 		}
 
-		// 提取token字符串
-		tokenString := token[7:] // 移除"Bearer "前缀
+		// 提取token字符串（移除"Bearer "前缀）
+		// token[7:]表示从第7个字符开始（跳过"Bearer "）
+		tokenString := token[7:]
 
-		// 检查token是否在黑名单中
+		// 检查token是否在黑名单中（已撤销的token）
+		// 如果tokenBlacklistService未初始化，跳过此检查
+		// 黑名单用于存储已登出的token，防止token被滥用
 		if m.tokenBlacklistService != nil && m.tokenBlacklistService.IsBlacklisted(tokenString) {
+			// token已被撤销，返回401错误
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": "Token has been revoked",
 			})
-			c.Abort()
+			c.Abort() // 停止后续处理
 			return
 		}
 
 		// 验证JWT token
+		// 验证包括：签名验证、过期时间检查、格式验证
 		jwtUtils := Utils.NewJWTUtils(&Config.GetConfig().JWT)
 		claims, err := jwtUtils.ValidateToken(tokenString)
 		if err != nil {
+			// token验证失败（签名错误、已过期等），返回401错误
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
 				"message": "Invalid token",
 			})
-			c.Abort()
+			c.Abort() // 停止后续处理
 			return
 		}
 
-		// 将用户信息存储到上下文中
+		// 将用户信息存储到上下文中，供后续中间件和处理器使用
 		// 注意：统一使用string类型存储user_id，确保类型一致性
-		c.Set("user_id", fmt.Sprintf("%d", claims.UserID))
-		c.Set("username", claims.Username)
-		c.Set("user_role", claims.Role)
+		// 后续代码可以通过c.GetString("user_id")获取用户ID
+		c.Set("user_id", fmt.Sprintf("%d", claims.UserID)) // 用户ID（string类型）
+		c.Set("username", claims.Username)                   // 用户名
+		c.Set("user_role", claims.Role)                      // 用户角色
 
-		// 记录认证成功日志
+		// 记录认证成功日志（可选）
 		// 这里可以集成日志服务来记录认证成功事件
+		// 用于安全审计和问题排查
 		_ = map[string]interface{}{
 			"user_id":    claims.UserID,
 			"username":   claims.Username,
@@ -155,6 +205,7 @@ func (m *AuthMiddleware) Handle() gin.HandlerFunc {
 			"user_agent": c.Request.UserAgent(),
 		}
 
+		// 认证成功，继续执行后续中间件和处理器
 		c.Next()
 	}
 }

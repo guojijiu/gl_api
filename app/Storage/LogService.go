@@ -4,7 +4,6 @@ import (
 	"cloud-platform-api/app/Config"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,7 +87,7 @@ func (ls *LogService) ReadLogs(level string, date string) ([]LogEntry, error) {
 	}
 
 	// 读取文件内容
-	content, err := ioutil.ReadFile(logPath)
+	content, err := os.ReadFile(logPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取日志文件失败: %v", err)
 	}
@@ -125,7 +124,7 @@ func (ls *LogService) GetLogFiles(level string) ([]string, error) {
 	}
 
 	// 读取目录内容
-	files, err := ioutil.ReadDir(logDir)
+	files, err := os.ReadDir(logDir)
 	if err != nil {
 		return nil, fmt.Errorf("读取日志目录失败: %v", err)
 	}
@@ -166,7 +165,7 @@ func (ls *LogService) cleanDirectory(dir string, cutoffTime time.Time) error {
 	}
 
 	// 读取目录内容
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
@@ -176,8 +175,14 @@ func (ls *LogService) cleanDirectory(dir string, cutoffTime time.Time) error {
 			continue
 		}
 
+		// 获取文件信息以检查修改时间
+		info, err := file.Info()
+		if err != nil {
+			continue
+		}
+
 		// 检查文件修改时间
-		if file.ModTime().Before(cutoffTime) {
+		if info.ModTime().Before(cutoffTime) {
 			filePath := filepath.Join(dir, file.Name())
 			if err := os.Remove(filePath); err != nil {
 				return fmt.Errorf("删除文件失败 %s: %v", filePath, err)

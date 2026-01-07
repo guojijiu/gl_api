@@ -205,64 +205,138 @@ func (sas *SecurityAuditService) CreateAPIKey(userID uint, name string, permissi
 // 2. 检查密钥是否过期
 // 3. 验证用户权限
 // 4. 更新最后使用时间
+//
+// 安全设计：
+// - 使用SHA256哈希存储API密钥，不在数据库中存储明文
+// - 使用内存缓存提高验证性能
+// - 支持权限验证，确保API密钥只能访问授权资源
+//
+// 验证流程：
+// 1. 计算API密钥的SHA256哈希
+// 2. 从内存缓存或数据库查找密钥记录
+// 3. 检查密钥是否激活
+// 4. 检查密钥是否过期
+// 5. 验证权限是否满足要求
+// 6. 更新最后使用时间
+//
+// 性能优化：
+// - 使用内存缓存（apiKeys map）减少数据库查询
+// - 缓存未命中时才查询数据库
+// - 使用读锁获取缓存，减少锁竞争
+//
+// 安全考虑：
+// - 密钥哈希化存储，即使数据库泄露也不会暴露明文密钥
+// - 支持密钥过期和禁用机制
+// - 权限验证确保最小权限原则
+//
+// 注意事项：
+// - API密钥应该通过安全渠道生成和分发
+// - 密钥过期后需要重新生成
+// - 权限变更后需要更新密钥记录
 func (sas *SecurityAuditService) ValidateAPIKey(apiKey string, requiredPermissions []string) (*APIKey, error) {
-	// 计算密钥哈希
+	// 计算密钥哈希（SHA256）
+	// 使用哈希而不是明文存储，提高安全性
+	// 即使数据库泄露，攻击者也无法直接获取明文密钥
 	keyHash := sha256.Sum256([]byte(apiKey))
 	keyHashStr := hex.EncodeToString(keyHash[:])
 
+	// 从内存缓存中查找密钥记录（使用读锁）
+	// 缓存可以提高验证性能，减少数据库查询
 	sas.mutex.RLock()
 	keyRecord, exists := sas.apiKeys[keyHashStr]
 	sas.mutex.RUnlock()
 
+	// 如果缓存中不存在，从数据库加载
 	if !exists {
-		// 从数据库加载
+		// 从数据库查询密钥记录
+		// 使用key_hash字段查询，因为数据库中存储的是哈希值
 		if err := Database.DB.Where("key_hash = ?", keyHashStr).First(&keyRecord).Error; err != nil {
+			// 密钥不存在，返回错误
 			return nil, fmt.Errorf("无效的API密钥")
 		}
+		// 将密钥记录添加到内存缓存中，提高后续查询性能
 		sas.mutex.Lock()
 		sas.apiKeys[keyHashStr] = keyRecord
 		sas.mutex.Unlock()
 	}
 
 	// 检查密钥是否激活
+	// 禁用的密钥不能使用，即使未过期
 	if !keyRecord.IsActive {
 		return nil, fmt.Errorf("API密钥已被禁用")
 	}
 
 	// 检查密钥是否过期
+	// 过期的密钥不能使用，需要重新生成
 	if time.Now().After(keyRecord.ExpiresAt) {
 		return nil, fmt.Errorf("API密钥已过期")
 	}
 
 	// 检查权限
+	// 验证密钥的权限是否满足所需权限
+	// 如果requiredPermissions为空，表示不需要特定权限
 	if !sas.hasPermissions(keyRecord.Permissions, requiredPermissions) {
 		return nil, fmt.Errorf("API密钥权限不足")
 	}
 
 	// 更新最后使用时间
+	// 用于审计和监控，了解密钥的使用情况
 	keyRecord.LastUsed = time.Now()
 	Database.DB.Save(keyRecord)
 
+	// 验证通过，返回密钥记录
 	return keyRecord, nil
 }
 
 // hasPermissions 检查是否具有所需权限
+//
+// 功能说明：
+// 1. 验证用户权限是否包含所有所需权限
+// 2. 使用map提高查找效率（O(1)时间复杂度）
+// 3. 如果不需要特定权限，直接返回true
+//
+// 权限验证逻辑：
+// - 如果requiredPermissions为空，表示不需要特定权限，返回true
+// - 如果requiredPermissions不为空，检查userPermissions是否包含所有所需权限
+// - 使用map存储用户权限，提高查找效率
+//
+// 算法复杂度：
+// - 时间复杂度：O(n + m)，n为用户权限数，m为所需权限数
+// - 空间复杂度：O(n)，用于存储权限map
+//
+// 使用场景：
+// - API密钥权限验证
+// - 用户角色权限验证
+// - 资源访问权限验证
+//
+// 注意事项：
+// - 权限名称区分大小写
+// - 权限名称应该标准化，避免拼写错误
+// - 如果所需权限为空，表示不需要权限验证，直接通过
 func (sas *SecurityAuditService) hasPermissions(userPermissions, requiredPermissions []string) bool {
+	// 如果不需要特定权限，直接返回true
+	// 这允许某些API不需要权限验证
 	if len(requiredPermissions) == 0 {
 		return true
 	}
 
+	// 将用户权限转换为map，提高查找效率
+	// map查找的时间复杂度为O(1)，比遍历slice的O(n)更高效
 	permissionMap := make(map[string]bool)
 	for _, perm := range userPermissions {
 		permissionMap[perm] = true
 	}
 
+	// 检查用户是否具有所有所需权限
+	// 如果缺少任何一个权限，返回false
 	for _, required := range requiredPermissions {
 		if !permissionMap[required] {
+			// 缺少所需权限，返回false
 			return false
 		}
 	}
 
+	// 用户具有所有所需权限，返回true
 	return true
 }
 

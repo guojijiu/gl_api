@@ -182,55 +182,168 @@ func (s *OptimizedMonitoringService) flushLoop() {
 }
 
 // collectMetrics 收集指标
+//
+// 功能说明：
+// 1. 根据配置收集不同类型的指标
+// 2. 支持系统指标、应用指标、业务指标的独立控制
+// 3. 定期调用，用于持续监控系统状态
+//
+// 指标类型：
+// - 系统指标：CPU、内存、Goroutine、GC等系统资源使用情况
+// - 应用指标：HTTP请求、数据库查询、缓存命中率等应用性能指标
+// - 业务指标：用户注册数、订单数、收入等业务相关指标
+//
+// 配置控制：
+// - 每种指标类型都可以通过配置独立启用/禁用
+// - 可以根据实际需求选择收集的指标类型
+// - 禁用不需要的指标可以减少性能开销
+//
+// 调用时机：
+// - 由monitoringLoop定期调用
+// - 调用频率由checkInterval配置决定
+// - 默认每30秒收集一次
+//
+// 性能考虑：
+// - 指标收集是轻量级操作，但频繁收集可能影响性能
+// - 可以根据实际情况调整收集频率
+// - 某些指标收集可能需要系统调用，可能较慢
+//
+// 注意事项：
+// - 指标收集失败不应该影响主流程
+// - 收集的指标会缓存，由flushLoop定期刷新到存储
+// - 大量指标可能导致内存占用增加
 func (s *OptimizedMonitoringService) collectMetrics() {
+	// 收集系统指标（如果启用）
+	// 包括CPU、内存、Goroutine、GC等系统资源使用情况
 	if s.config.EnableSystemMetrics {
 		s.collectSystemMetrics()
 	}
 
+	// 收集应用指标（如果启用）
+	// 包括HTTP请求、数据库查询、缓存命中率等应用性能指标
 	if s.config.EnableAppMetrics {
 		s.collectAppMetrics()
 	}
 
+	// 收集业务指标（如果启用）
+	// 包括用户注册数、订单数、收入等业务相关指标
 	if s.config.EnableBusinessMetrics {
 		s.collectBusinessMetrics()
 	}
 }
 
 // collectSystemMetrics 收集系统指标
+//
+// 功能说明：
+// 1. 收集Go运行时的系统资源使用情况
+// 2. 包括CPU使用率、内存使用率、Goroutine数量等
+// 3. 缓存指标并检查是否超过阈值
+//
+// 收集的指标：
+// - CPUUsage: CPU使用率（百分比）
+// - MemoryUsage: 内存使用率（百分比）
+// - Goroutines: 当前Goroutine数量
+// - HeapSize: 堆内存分配大小（字节）
+// - GCCount: GC执行次数
+// - Timestamp: 指标收集时间戳
+//
+// 数据来源：
+// - runtime.ReadMemStats(): 获取Go运行时内存统计
+// - runtime.NumGoroutine(): 获取当前Goroutine数量
+// - getCPUUsage(): 获取CPU使用率（需要系统调用）
+// - getMemoryUsage(): 获取内存使用率（需要系统调用）
+//
+// 阈值检查：
+// - 检查指标是否超过配置的阈值
+// - 超过阈值时触发告警
+// - 用于及时发现系统资源问题
+//
+// 性能考虑：
+// - runtime.ReadMemStats()是STW（Stop The World）操作，可能影响性能
+// - 建议不要过于频繁调用（默认30秒一次）
+// - CPU和内存使用率获取可能需要系统调用，可能较慢
+//
+// 注意事项：
+// - 指标收集失败不应该影响主流程
+// - 某些指标（如CPU使用率）可能需要系统权限
+// - 内存统计是Go运行时的统计，不是系统级别的
 func (s *OptimizedMonitoringService) collectSystemMetrics() {
+	// 读取Go运行时内存统计
+	// 注意：这是STW操作，可能影响性能，不要过于频繁调用
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 
+	// 构建系统指标对象
 	metrics := SystemMetrics{
-		CPUUsage:    s.getCPUUsage(),
-		MemoryUsage: s.getMemoryUsage(),
-		Goroutines:  runtime.NumGoroutine(),
-		HeapSize:    m.HeapAlloc,
-		GCCount:     m.NumGC,
-		Timestamp:   time.Now(),
+		CPUUsage:    s.getCPUUsage(),        // CPU使用率（需要系统调用）
+		MemoryUsage: s.getMemoryUsage(),     // 内存使用率（需要系统调用）
+		Goroutines:  runtime.NumGoroutine(), // 当前Goroutine数量
+		HeapSize:    m.HeapAlloc,            // 堆内存分配大小
+		GCCount:     m.NumGC,                // GC执行次数
+		Timestamp:   time.Now(),             // 指标收集时间戳
 	}
 
 	// 缓存指标
+	// 指标会先缓存到内存，由flushLoop定期刷新到存储
 	s.cacheMetrics("system", metrics)
 
 	// 检查阈值
+	// 如果指标超过配置的阈值，触发告警
 	s.checkThresholds(metrics)
 }
 
 // collectAppMetrics 收集应用指标
+//
+// 功能说明：
+// 1. 收集应用程序的性能指标
+// 2. 包括HTTP请求、数据库查询、缓存等应用层指标
+// 3. 用于分析应用性能和问题排查
+//
+// 收集的指标：
+// - RequestCount: HTTP请求总数
+// - ResponseTime: 平均响应时间
+// - ErrorCount: 错误请求数
+// - ActiveUsers: 活跃用户数
+// - DatabaseQueries: 数据库查询数
+// - CacheHits: 缓存命中数
+// - CacheMisses: 缓存未命中数
+// - Timestamp: 指标收集时间戳
+//
+// 数据来源：
+// - 从中间件和服务中收集的统计数据
+// - 这些数据通常存储在内存中，定期汇总
+// - 某些指标可能需要从数据库或缓存中获取
+//
+// 使用场景：
+// - 性能分析和优化
+// - 问题诊断和排查
+// - 容量规划
+// - SLA监控
+//
+// 性能考虑：
+// - 指标收集是轻量级操作
+// - 某些指标（如活跃用户数）可能需要查询数据库
+// - 可以根据实际情况调整收集频率
+//
+// 注意事项：
+// - 指标数据是统计值，不是实时值
+// - 某些指标可能需要从多个来源汇总
+// - 指标收集失败不应该影响主流程
 func (s *OptimizedMonitoringService) collectAppMetrics() {
+	// 构建应用指标对象
 	metrics := AppMetrics{
-		RequestCount:    s.getRequestCount(),
-		ResponseTime:    s.getAverageResponseTime(),
-		ErrorCount:      s.getErrorCount(),
-		ActiveUsers:     s.getActiveUsers(),
-		DatabaseQueries: s.getDatabaseQueries(),
-		CacheHits:       s.getCacheHits(),
-		CacheMisses:     s.getCacheMisses(),
-		Timestamp:       time.Now(),
+		RequestCount:    s.getRequestCount(),        // HTTP请求总数
+		ResponseTime:    s.getAverageResponseTime(), // 平均响应时间
+		ErrorCount:      s.getErrorCount(),          // 错误请求数
+		ActiveUsers:     s.getActiveUsers(),         // 活跃用户数（可能需要查询数据库）
+		DatabaseQueries: s.getDatabaseQueries(),     // 数据库查询数
+		CacheHits:       s.getCacheHits(),           // 缓存命中数
+		CacheMisses:     s.getCacheMisses(),         // 缓存未命中数
+		Timestamp:       time.Now(),                 // 指标收集时间戳
 	}
 
 	// 缓存指标
+	// 指标会先缓存到内存，由flushLoop定期刷新到存储
 	s.cacheMetrics("app", metrics)
 }
 

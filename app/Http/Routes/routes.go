@@ -45,8 +45,49 @@ import (
 // - 缓存策略支持
 // - 数据库查询优化
 // - 支持多租户路由隔离
+//
+// 功能说明：
+// 1. 注册所有HTTP路由和API端点
+// 2. 配置全局中间件链（按顺序执行）
+// 3. 创建API版本分组（v1、v2等）
+// 4. 注册健康检查端点
+// 5. 注册业务路由（认证、用户、文章等）
+//
+// 中间件执行顺序（重要）：
+// 1. 错误恢复（Recovery）：最先执行，捕获panic，防止程序崩溃
+// 2. CORS：处理跨域请求，设置响应头
+// 3. 验证中间件：输入验证、SQL注入检测、XSS防护
+// 4. 超时控制：防止长时间运行的请求
+// 5. 速率限制：防止API滥用
+// 6. 性能监控：收集性能指标
+// 7. 请求统计：统计请求信息
+// 8. 请求日志：记录请求和响应
+// 9. SQL日志：记录SQL查询
+// 10. 错误处理：最后执行，处理业务错误
+//
+// 中间件顺序的重要性：
+// - 错误恢复必须最先执行，才能捕获后续中间件的panic
+// - 验证中间件应该在业务逻辑之前执行，提前过滤无效请求
+// - 日志中间件应该在业务逻辑之后执行，记录完整的请求信息
+// - 错误处理应该最后执行，处理所有业务错误
+//
+// 性能考虑：
+// - 中间件按顺序执行，可能影响请求处理时间
+// - 某些中间件（如日志）可以异步处理，减少延迟
+// - 速率限制应该在早期执行，避免无效请求消耗资源
+//
+// 安全考虑：
+// - CORS应该在早期执行，防止跨域攻击
+// - 验证中间件应该在业务逻辑之前，防止恶意输入
+// - 速率限制应该在早期执行，防止DDoS攻击
+//
+// 注意事项：
+// - 中间件顺序很重要，不要随意调整
+// - 某些中间件可能影响响应时间，需要权衡
+// - 日志中间件可能产生大量日志，需要合理配置
 func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, logManager *Services.LogManagerService) {
-	// 创建中间件
+	// 创建中间件实例
+	// 每个中间件负责不同的功能（日志、错误处理、安全等）
 	requestLogMiddleware := Middleware.NewRequestLogMiddleware(logManager)
 	sqlLogMiddleware := Middleware.NewSQLLogMiddleware(logManager)
 	errorHandlingMiddleware := Middleware.NewErrorHandlingMiddleware(storageManager, nil)
@@ -58,44 +99,57 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	versionMiddleware := Middleware.NewVersionMiddleware(storageManager)
 
 	// 创建增强的验证中间件
+	// 包含输入验证、SQL注入检测、XSS防护等功能
 	validationMiddleware := Middleware.NewEnhancedValidationMiddleware(storageManager, nil)
 
 	// 创建请求统计中间件
+	// 用于收集和分析请求统计信息
 	monitoringService := Services.NewOptimizedMonitoringService()
 	requestStatsMiddleware := Middleware.NewRequestStatsMiddleware(storageManager, monitoringService)
 
 	// 添加全局中间件
-	// 注意：中间件的执行顺序很重要
-	// 1. 错误恢复（最先执行，捕获panic）
-	// 2. 安全中间件（CORS、请求大小限制、XSS防护）
-	// 3. 验证中间件（输入验证、SQL注入检测、XSS防护）
-	// 4. 性能中间件（超时、速率限制）
-	// 5. 日志中间件（请求日志、SQL日志）
-	// 6. 业务中间件（认证、权限等）
+	// 注意：中间件的执行顺序很重要，影响功能和性能
+	// 执行顺序：从上到下，从左到右
 	engine.Use(
-		recoveryMiddleware.Handle(),                    // 错误恢复中间件（最先执行，只处理panic）
-		corsMiddleware.Handle(),                        // CORS中间件
-		validationMiddleware.Handle(),                  // 增强的验证中间件
-		validationMiddleware.ValidateJSON(),            // JSON验证中间件
-		validationMiddleware.ValidateFileUpload(),      // 文件上传验证中间件
-		timeoutMiddleware.Handle(30*time.Second),       // 请求超时中间件
-		rateLimitMiddleware.Handle(100, 1*time.Minute), // 全局速率限制
-		performanceMiddleware.Handle(),                 // 性能监控中间件
-		requestStatsMiddleware.Handle(),                // 请求统计中间件
-		requestLogMiddleware.RequestLog(),              // 自定义请求日志
-		sqlLogMiddleware.Handle(),                      // SQL日志中间件
-		errorHandlingMiddleware.Handle(),               // 错误处理中间件（处理业务错误，不处理panic）
+		recoveryMiddleware.Handle(),                    // 1. 错误恢复中间件（最先执行，捕获panic）
+		corsMiddleware.Handle(),                        // 2. CORS中间件（处理跨域请求）
+		validationMiddleware.Handle(),                  // 3. 增强的验证中间件（输入验证、安全检测）
+		validationMiddleware.ValidateJSON(),            // 4. JSON验证中间件（验证JSON格式）
+		validationMiddleware.ValidateFileUpload(),      // 5. 文件上传验证中间件（验证文件类型和大小）
+		timeoutMiddleware.Handle(30*time.Second),       // 6. 请求超时中间件（30秒超时）
+		rateLimitMiddleware.Handle(100, 1*time.Minute), // 7. 全局速率限制（每分钟100次请求）
+		performanceMiddleware.Handle(),                 // 8. 性能监控中间件（收集性能指标）
+		requestStatsMiddleware.Handle(),                // 9. 请求统计中间件（统计请求信息）
+		requestLogMiddleware.RequestLog(),              // 10. 自定义请求日志（记录请求和响应）
+		sqlLogMiddleware.Handle(),                      // 11. SQL日志中间件（记录SQL查询）
+		errorHandlingMiddleware.Handle(),               // 12. 错误处理中间件（最后执行，处理业务错误）
 	)
 
 	// API版本分组
+	// 创建v1版本的API路由组
+	// 所有v1版本的API都在/api/v1路径下
+	// 支持多版本API共存（v1、v2等）
 	v1 := engine.Group("/api/v1")
-	v1.Use(versionMiddleware.Handle()) // 添加版本控制中间件
+	// 添加版本控制中间件
+	// 用于记录API版本信息，便于版本管理和统计
+	v1.Use(versionMiddleware.Handle())
 
-	// 健康检查
+	// 健康检查端点
+	// 这些端点不经过认证中间件，用于监控和负载均衡器检查
 	healthController := Controllers.NewHealthController()
+	
+	// 基础健康检查：快速检查服务是否运行
 	engine.GET("/health", healthController.Health)
+	
+	// 详细健康检查：包含系统资源、数据库、缓存等详细信息
 	engine.GET("/health/detailed", healthController.DetailedHealth)
+	
+	// 就绪检查：检查服务是否准备好接受请求
+	// 用于Kubernetes的readiness probe
 	engine.GET("/health/ready", healthController.Readiness)
+	
+	// 存活检查：检查服务是否存活
+	// 用于Kubernetes的liveness probe
 	engine.GET("/health/live", healthController.Liveness)
 
 	// 测试路由

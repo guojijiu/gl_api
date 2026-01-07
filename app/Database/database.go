@@ -181,14 +181,42 @@ func (w *GormLogManagerWrapper) Trace(ctx context.Context, begin time.Time, fc f
 // - 支持优雅降级和故障转移
 
 // classifyDBError 分类数据库错误
+//
+// 功能说明：
+// 1. 根据错误消息内容将数据库错误分类为不同的类型
+// 2. 错误分类用于决定是否应该重试连接
+// 3. 帮助快速定位问题根源，提供更好的错误处理
+//
+// 错误类型说明：
+// - SUCCESS：无错误（err == nil）
+// - NETWORK_ERROR：网络相关错误，通常是临时性的，可以重试
+// - AUTH_ERROR：认证相关错误，通常是配置问题，不应该重试
+// - DATABASE_NOT_FOUND：数据库不存在，需要先创建数据库，不应该重试
+// - PERMISSION_ERROR：权限相关错误，需要修复权限，不应该重试
+// - CONFIG_ERROR：配置相关错误，需要修复配置，不应该重试
+// - RESOURCE_ERROR：资源不足错误，通常是临时性的，可以重试
+// - UNKNOWN_ERROR：未知错误，需要进一步分析
+//
+// 分类策略：
+// - 通过检查错误消息中的关键词来判断错误类型
+// - 使用字符串包含检查（strings.Contains），不区分大小写
+// - 按优先级检查，先检查更具体的错误类型
+//
+// 注意事项：
+// - 错误消息可能因数据库类型而异，需要覆盖常见的关键词
+// - 某些错误可能匹配多个类型，按检查顺序返回第一个匹配的类型
+// - 如果无法分类，返回UNKNOWN_ERROR，由shouldRetry决定是否重试
 func classifyDBError(err error) string {
+	// 无错误，返回成功
 	if err == nil {
 		return "SUCCESS"
 	}
 
+	// 将错误消息转换为小写，便于匹配（不区分大小写）
 	errStr := strings.ToLower(err.Error())
 
-	// 网络相关错误
+	// 网络相关错误（通常是临时性的，可以重试）
+	// 包括：连接被拒绝、无法路由到主机、网络不可达、超时等
 	if strings.Contains(errStr, "connection refused") ||
 		strings.Contains(errStr, "no route to host") ||
 		strings.Contains(errStr, "network is unreachable") ||
@@ -196,7 +224,8 @@ func classifyDBError(err error) string {
 		return "NETWORK_ERROR"
 	}
 
-	// 认证相关错误
+	// 认证相关错误（通常是配置问题，不应该重试）
+	// 包括：访问被拒绝、认证失败、无效凭证、密码错误等
 	if strings.Contains(errStr, "access denied") ||
 		strings.Contains(errStr, "authentication failed") ||
 		strings.Contains(errStr, "invalid credentials") ||
@@ -204,75 +233,140 @@ func classifyDBError(err error) string {
 		return "AUTH_ERROR"
 	}
 
-	// 数据库不存在错误
+	// 数据库不存在错误（需要先创建数据库，不应该重试）
+	// 包括：数据库不存在、数据库未找到等
 	if strings.Contains(errStr, "database") &&
 		(strings.Contains(errStr, "doesn't exist") ||
 			strings.Contains(errStr, "not found")) {
 		return "DATABASE_NOT_FOUND"
 	}
 
-	// 权限相关错误
+	// 权限相关错误（需要修复权限，不应该重试）
+	// 包括：权限被拒绝、访问被拒绝、权限不足等
 	if strings.Contains(errStr, "permission denied") ||
 		strings.Contains(errStr, "access denied") ||
 		strings.Contains(errStr, "insufficient privileges") {
 		return "PERMISSION_ERROR"
 	}
 
-	// 配置相关错误
+	// 配置相关错误（需要修复配置，不应该重试）
+	// 包括：无效配置、无效参数等
 	if strings.Contains(errStr, "invalid") &&
 		(strings.Contains(errStr, "configuration") ||
 			strings.Contains(errStr, "parameter")) {
 		return "CONFIG_ERROR"
 	}
 
-	// 资源不足错误
+	// 资源不足错误（通常是临时性的，可以重试）
+	// 包括：连接数过多、连接限制、资源不足等
 	if strings.Contains(errStr, "too many connections") ||
 		strings.Contains(errStr, "connection limit") ||
 		strings.Contains(errStr, "resource") {
 		return "RESOURCE_ERROR"
 	}
 
-	// 其他错误
+	// 其他错误：无法分类的未知错误
+	// 由shouldRetry决定是否重试（通常限制重试次数）
 	return "UNKNOWN_ERROR"
 }
 
 // shouldRetry 判断是否应该重试
+//
+// 功能说明：
+// 1. 根据错误类型和重试次数决定是否应该重试连接
+// 2. 避免对不可恢复的错误进行无意义的重试
+// 3. 防止无限重试导致资源浪费
+//
+// 重试策略：
+// - 网络错误（NETWORK_ERROR）：可以重试，可能是临时网络问题
+// - 资源错误（RESOURCE_ERROR）：可以重试，可能是连接池满等临时问题
+// - 认证错误（AUTH_ERROR）：不应该重试，配置错误需要人工修复
+// - 权限错误（PERMISSION_ERROR）：不应该重试，权限问题需要人工修复
+// - 配置错误（CONFIG_ERROR）：不应该重试，配置错误需要人工修复
+// - 数据库不存在（DATABASE_NOT_FOUND）：不应该重试，需要先创建数据库
+// - 未知错误（UNKNOWN_ERROR）：最多重试3次，避免无限重试
+//
+// 注意事项：
+// - 达到最大重试次数后不再重试
+// - 对于不可恢复的错误，立即返回false，避免浪费资源
+// - 未知错误限制重试次数，避免无限重试
 func shouldRetry(errorType string, attempt, maxRetries int) bool {
-	// 达到最大重试次数
+	// 达到最大重试次数，不再重试
 	if attempt >= maxRetries {
 		return false
 	}
 
 	// 根据错误类型决定是否重试
+	// 策略：只有临时性错误才重试，永久性错误不重试
 	switch errorType {
 	case "NETWORK_ERROR", "RESOURCE_ERROR":
-		return true // 网络和资源错误可以重试
+		// 网络和资源错误通常是临时性的，可以重试
+		// 例如：网络中断、连接池满等，这些问题可能会自动恢复
+		return true
 	case "AUTH_ERROR", "PERMISSION_ERROR", "CONFIG_ERROR", "DATABASE_NOT_FOUND":
-		return false // 认证、权限、配置和数据库不存在错误不应该重试
+		// 认证、权限、配置和数据库不存在错误是永久性的，不应该重试
+		// 这些问题需要人工修复，重试只会浪费资源
+		return false
 	case "UNKNOWN_ERROR":
-		return attempt < 3 // 未知错误最多重试3次
+		// 未知错误：可能是临时性的，也可能是永久性的
+		// 为了安全，限制最多重试3次，避免无限重试
+		return attempt < 3
 	default:
+		// 其他错误类型默认不重试
 		return false
 	}
 }
 
 // calculateRetryDelay 计算重试延迟
+//
+// 功能说明：
+// 1. 使用指数退避策略计算重试延迟
+// 2. 添加随机抖动，避免多个客户端同时重试（thundering herd问题）
+// 3. 限制最大和最小延迟，确保延迟在合理范围内
+//
+// 指数退避算法：
+// - 第1次重试：baseDelay * 2^0 = baseDelay
+// - 第2次重试：baseDelay * 2^1 = baseDelay * 2
+// - 第3次重试：baseDelay * 2^2 = baseDelay * 4
+// - 第N次重试：baseDelay * 2^(N-1)
+//
+// 随机抖动：
+// - 在指数退避的基础上添加±25%的随机延迟
+// - 避免多个客户端同时重试，造成服务器压力
+// - 例如：如果延迟是10秒，抖动范围是7.5秒到12.5秒
+//
+// 延迟限制：
+// - 最大延迟：不超过maxDelay，避免等待时间过长
+// - 最小延迟：不低于baseDelay，确保有基本的延迟
+//
+// 使用场景：
+// - 数据库连接重试
+// - API调用重试
+// - 网络请求重试
 func calculateRetryDelay(baseDelay time.Duration, attempt int, maxDelay time.Duration) time.Duration {
-	// 指数退避：baseDelay * 2^(attempt-1)
+	// 指数退避：每次重试延迟翻倍
+	// 公式：baseDelay * 2^(attempt-1)
+	// 例如：baseDelay=2秒，attempt=3，则延迟=2*2^2=8秒
+	// 这样可以避免频繁重试，给服务器恢复的时间
 	exponentialDelay := time.Duration(float64(baseDelay) * math.Pow(2, float64(attempt-1)))
 
 	// 添加随机抖动（±25%）
+	// 随机抖动可以避免多个客户端同时重试（thundering herd问题）
+	// 例如：如果延迟是10秒，抖动范围是7.5秒到12.5秒
+	// rand.Float64()返回[0,1)的随机数，2*rand.Float64()-1返回[-1,1)的随机数
 	jitter := time.Duration(float64(exponentialDelay) * 0.25 * (2*rand.Float64() - 1))
 
-	// 计算最终延迟
+	// 计算最终延迟（指数退避 + 随机抖动）
 	finalDelay := exponentialDelay + jitter
 
-	// 限制最大延迟
+	// 限制最大延迟，避免等待时间过长
+	// 例如：如果计算出的延迟是60秒，但maxDelay是30秒，则使用30秒
 	if finalDelay > maxDelay {
 		finalDelay = maxDelay
 	}
 
-	// 确保最小延迟
+	// 确保最小延迟，避免延迟过短
+	// 例如：如果计算出的延迟是0.5秒，但baseDelay是2秒，则使用2秒
 	if finalDelay < baseDelay {
 		finalDelay = baseDelay
 	}
@@ -280,17 +374,48 @@ func calculateRetryDelay(baseDelay time.Duration, attempt int, maxDelay time.Dur
 	return finalDelay
 }
 
+// initDB 初始化数据库连接
+//
+// 功能说明：
+// 1. 根据配置的数据库类型建立连接（MySQL、PostgreSQL、SQLite）
+// 2. 实现智能重试机制，对临时性错误自动重试
+// 3. 配置连接池参数，优化性能和资源使用
+// 4. 启动连接池监控，实时监控连接状态
+//
+// 重试策略：
+// - 最大重试次数：5次
+// - 初始延迟：2秒
+// - 最大延迟：30秒
+// - 使用指数退避 + 随机抖动
+//
+// 连接池配置：
+// - 最大空闲连接：20个（保持连接池活跃，减少连接创建开销）
+// - 最大打开连接：200个（支持高并发访问）
+// - 连接最大生命周期：30分钟（防止连接老化）
+// - 空闲连接最大生存时间：5分钟（释放无用连接）
+//
+// 错误处理：
+// - 根据错误类型决定是否重试（网络错误可重试，认证错误不重试）
+// - 不支持重试的错误立即退出，避免无限循环
+// - 达到最大重试次数后退出，记录详细错误信息
+//
+// 注意事项：
+// - 连接失败会记录致命错误并退出程序（log.Fatal）
+// - 连接池配置失败会立即退出
+// - 连接测试失败会立即退出
 func initDB() {
 	var err error
-	maxRetries := 5                   // 增加重试次数
-	baseRetryDelay := 2 * time.Second // 减少初始延迟
-	maxRetryDelay := 30 * time.Second // 设置最大延迟
+	maxRetries := 5                   // 最大重试次数
+	baseRetryDelay := 2 * time.Second // 初始重试延迟
+	maxRetryDelay := 30 * time.Second // 最大重试延迟
 
 	cfg := Config.GetConfig().Database
 
-	// 重试机制
+	// 重试机制：最多重试maxRetries次
+	// 每次重试前会根据错误类型判断是否应该重试
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		// 根据数据库驱动类型建立连接
+		// 支持MySQL、PostgreSQL、SQLite三种数据库
 		switch cfg.Driver {
 		case "mysql":
 			dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=%s&parseTime=True&loc=Local&timeout=30s&readTimeout=30s&writeTimeout=30s",
@@ -317,25 +442,33 @@ func initDB() {
 			log.Fatal("Unsupported database driver:", cfg.Driver)
 		}
 
+		// 检查连接是否成功
 		if err == nil {
 			log.Printf("数据库连接成功 (尝试 %d/%d)", attempt, maxRetries)
 			break // 连接成功，跳出重试循环
 		}
 
-		// 分类错误类型
+		// 连接失败，分类错误类型
+		// 根据错误类型决定是否应该重试
 		errorType := classifyDBError(err)
 		log.Printf("数据库连接失败 (尝试 %d/%d) [%s]: %v", attempt, maxRetries, errorType, err)
 
 		// 根据错误类型决定是否重试
+		// 对于不可恢复的错误（如认证错误、配置错误），不应该重试
+		// 重试只会浪费资源，需要人工修复配置
 		if !shouldRetry(errorType, attempt, maxRetries) {
 			log.Printf("错误类型 %s 不支持重试，停止重试", errorType)
 			// 对于不支持重试的错误，直接退出并记录致命错误
+			// 这些错误通常是配置问题，需要人工修复
 			log.Fatal("数据库连接失败，不支持重试的错误类型:", err)
 			return
 		}
 
+		// 如果还有重试机会，计算延迟后重试
 		if attempt < maxRetries {
 			// 计算重试延迟（指数退避 + 随机抖动）
+			// 指数退避：每次重试延迟翻倍，避免频繁重试造成服务器压力
+			// 随机抖动：添加随机延迟，避免多个客户端同时重试（thundering herd问题）
 			retryDelay := calculateRetryDelay(baseRetryDelay, attempt, maxRetryDelay)
 			log.Printf("等待 %v 后重试...", retryDelay)
 			time.Sleep(retryDelay)
@@ -347,23 +480,29 @@ func initDB() {
 	}
 
 	// 获取底层的sql.DB对象
+	// GORM的DB对象是对sql.DB的封装，需要获取底层对象来配置连接池
 	sqlDB, err := DB.DB()
 	if err != nil {
 		log.Fatal("Failed to get sql.DB:", err)
 	}
 
-	// 设置连接池参数 - 优化性能
-	sqlDB.SetMaxIdleConns(20)                  // 最大空闲连接数（增加以保持连接池活跃）
-	sqlDB.SetMaxOpenConns(200)                 // 最大打开连接数（增加以支持高并发）
-	sqlDB.SetConnMaxLifetime(30 * time.Minute) // 连接最大生命周期（减少以避免长时间占用）
-	sqlDB.SetConnMaxIdleTime(5 * time.Minute)  // 空闲连接最大生存时间（新增）
+	// 设置连接池参数 - 优化性能和资源使用
+	// 这些参数对高并发场景下的性能至关重要
+	sqlDB.SetMaxIdleConns(20)                  // 最大空闲连接数：保持20个连接在池中，减少连接创建开销
+	sqlDB.SetMaxOpenConns(200)                 // 最大打开连接数：最多同时打开200个连接，支持高并发
+	sqlDB.SetConnMaxLifetime(30 * time.Minute) // 连接最大生命周期：30分钟后强制关闭连接，防止连接老化
+	sqlDB.SetConnMaxIdleTime(5 * time.Minute)  // 空闲连接最大生存时间：5分钟未使用则关闭，释放资源
 
 	// 测试数据库连接
+	// Ping()会发送一个简单的查询来验证连接是否有效
+	// 如果连接无效，会返回错误，此时应该退出程序
 	if err := sqlDB.Ping(); err != nil {
 		log.Fatal("数据库连接测试失败:", err)
 	}
 
 	// 启动连接池监控
+	// 监控连接池状态，包括活跃连接数、空闲连接数、等待连接数等
+	// 每5分钟检查一次，用于性能分析和问题诊断
 	poolMonitor := NewConnectionPoolMonitor(sqlDB, nil)
 	poolMonitor.StartMonitoring(5 * time.Minute)
 

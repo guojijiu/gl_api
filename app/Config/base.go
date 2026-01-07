@@ -141,44 +141,89 @@ func (c *Config) BindEnvs() {
 // - 配置解析失败时立即退出
 // - 配置验证失败时提供详细错误信息
 // - 记录配置加载过程的关键步骤
+//
+// 配置加载流程：
+// 1. 加载.env文件（如果存在）
+// 2. 初始化全局配置变量
+// 3. 设置默认配置值
+// 4. 绑定环境变量映射
+// 5. 启用自动环境变量读取
+// 6. 解析配置到结构体
+// 7. 验证必需配置项
+// 8. 应用配置规则
+//
+// 配置优先级（从高到低）：
+// 1. 环境变量（最高优先级）
+// 2. .env文件
+// 3. 默认值（最低优先级）
+//
+// 必需配置项：
+// - JWT.Secret: JWT密钥（必须配置，长度>=32字符）
+// - Server.Port: 服务器端口（可选，默认8080）
+// - Database.Driver: 数据库驱动（可选，默认sqlite）
+//
+// 注意事项：
+// - 环境变量会覆盖.env文件和默认值
+// - 敏感配置（密码、密钥）不应该记录到日志
+// - 配置验证失败会立即退出程序
+// - 某些配置项有默认值，可以不配置
 func LoadConfig() {
-	// 加载环境变量
+	// 加载.env文件
+	// 如果.env文件不存在，使用系统环境变量
+	// 这允许在开发环境使用.env文件，在生产环境使用系统环境变量
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment variables")
 	}
 
 	// 初始化全局配置变量
+	// 使用空结构体，后续通过viper填充
 	globalConfig = &Config{}
 
 	// 设置默认值
+	// 为所有配置项设置合理的默认值
+	// 如果环境变量未配置，使用默认值
 	globalConfig.SetDefaults()
 
 	// 绑定环境变量（必须在AutomaticEnv之前）
+	// 将环境变量名映射到配置结构体字段
+	// 例如：JWT_SECRET -> JWT.Secret
 	globalConfig.BindEnvs()
 
 	// 从环境变量读取配置
+	// 自动读取所有环境变量，覆盖默认值和.env文件的值
 	viper.AutomaticEnv()
 
 	// 解析配置
+	// 将viper中的配置值解析到Config结构体
+	// 如果解析失败，立即退出程序
 	if err := viper.Unmarshal(&globalConfig); err != nil {
 		log.Fatal("Failed to unmarshal config:", err)
 	}
 
 	// 验证配置完整性
+	// 检查必需配置项，如果缺失则设置默认值或退出
+	
+	// 服务器端口：如果未配置，使用默认值8080
 	if globalConfig.Server.Port == "" {
 		globalConfig.Server.Port = "8080"
 	}
+	
+	// 数据库驱动：如果未配置，使用默认值sqlite
 	if globalConfig.Database.Driver == "" {
 		globalConfig.Database.Driver = "sqlite"
 	}
+	
+	// JWT密钥：必须配置，否则退出程序
+	// JWT密钥是安全关键配置，不能使用默认值
 	if globalConfig.JWT.Secret == "" {
 		log.Fatal("JWT密钥未配置，请在环境变量中设置JWT_SECRET")
 	}
 
-	// 配置加载完成后再打印
+	// 配置加载完成
+	// 注意：不应该打印完整配置，因为可能包含敏感信息（密码、密钥等）
 	//log.Printf("Config loaded successfully: %+v\n", globalConfig)
 
-	// 打印所有读取的环境变量内容
+	// 调试用：打印所有读取的环境变量内容
 	//printEnvironmentVariables()
 }
 

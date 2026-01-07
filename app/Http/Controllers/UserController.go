@@ -11,12 +11,48 @@ import (
 )
 
 // UserController 用户控制器
+//
+// 功能说明：
+// 1. 处理用户相关的HTTP请求
+// 2. 提供用户CRUD操作（创建、读取、更新、删除）
+// 3. 实现权限控制（管理员和普通用户）
+// 4. 处理用户列表查询（支持分页、筛选、搜索）
+// 5. 管理用户文章列表
+//
+// 权限控制：
+// - 管理员：可以查看、更新、删除所有用户
+// - 普通用户：只能查看和更新自己的信息
+//
+// 安全特性：
+// - 所有敏感信息（密码）都会被清除
+// - 用户名和邮箱唯一性验证
+// - 删除用户前检查关联数据
+// - 记录所有操作到审计日志
+//
+// 使用场景：
+// - 用户管理界面
+// - 用户资料编辑
+// - 用户列表查询
+// - 用户删除操作
 type UserController struct {
 	Controller
-	userService *Services.UserService
+	userService *Services.UserService // 用户服务（处理业务逻辑）
 }
 
 // NewUserController 创建用户控制器
+//
+// 功能说明：
+// 1. 初始化用户控制器实例
+// 2. 创建UserService服务实例
+// 3. 返回配置好的控制器对象
+//
+// 使用场景：
+// - 路由注册时创建控制器实例
+// - 测试环境中创建控制器实例
+//
+// 注意事项：
+// - 控制器是无状态的，可以安全地共享
+// - 服务实例在控制器创建时初始化
 func NewUserController() *UserController {
 	return &UserController{
 		userService: Services.NewUserService(),

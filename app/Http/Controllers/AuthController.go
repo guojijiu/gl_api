@@ -57,17 +57,50 @@ func NewAuthController() *AuthController {
 }
 
 // Register 用户注册
+//
 // 功能说明：
 // 1. 接收用户注册请求（用户名、邮箱、密码）
-// 2. 验证请求数据的有效性
+// 2. 验证请求数据的有效性（格式、类型、长度等）
 // 3. 调用AuthService进行用户注册
 // 4. 返回注册结果和用户信息（不含密码）
 // 5. 支持用户名和邮箱唯一性检查
 // 6. 自动对密码进行安全哈希处理
 // 7. 增强的输入验证和密码强度检查
+//
+// 验证流程：
+// 1. JSON绑定验证：检查请求格式是否正确
+// 2. 业务验证：检查用户名、邮箱、密码是否符合要求
+// 3. 唯一性检查：确保用户名和邮箱未被使用
+// 4. 密码强度检查：确保密码符合安全要求
+//
+// 安全措施：
+// - 密码使用bcrypt哈希存储，不存储明文
+// - 用户名和邮箱唯一性检查，防止重复注册
+// - 输入验证防止注入攻击
+// - 返回数据中不包含敏感信息（如密码）
+//
+// 错误处理：
+// - JSON绑定失败：返回400 Bad Request
+// - 验证失败：返回400 Bad Request，包含详细错误信息
+// - 注册失败：返回400 Bad Request，包含错误原因
+// - 成功：返回201 Created，包含用户信息
+//
+// 性能考虑：
+// - 数据库查询使用索引优化
+// - 密码哈希是CPU密集型操作，但通常很快
+// - 唯一性检查需要数据库查询，可能较慢
+//
+// 注意事项：
+// - 返回的用户信息不包含密码
+// - 用户名和邮箱必须唯一
+// - 密码强度要求应该明确告知用户
+// - 注册成功后可能需要邮箱验证
 func (c *AuthController) Register(ctx *gin.Context) {
+	// 绑定JSON请求数据
+	// ShouldBindJSON会自动验证JSON格式和基本类型
 	var request Requests.RegisterRequest
 	if err := ctx.ShouldBindJSON(&request); err != nil {
+		// JSON绑定失败，返回400错误
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "请求数据无效",
@@ -77,17 +110,24 @@ func (c *AuthController) Register(ctx *gin.Context) {
 	}
 
 	// 增强的请求验证
+	// 检查用户名、邮箱、密码是否符合业务规则
+	// 包括格式、长度、强度等验证
 	if validationErrors := request.Validate(); len(validationErrors) > 0 {
+		// 验证失败，返回详细错误信息
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "请求验证失败",
-			"errors":  validationErrors,
+			"errors":  validationErrors, // 包含所有验证错误
 		})
 		return
 	}
 
+	// 调用AuthService进行用户注册
+	// 包括密码哈希、唯一性检查、数据库保存等
 	user, err := c.authService.Register(request)
 	if err != nil {
+		// 注册失败，返回错误信息
+		// 可能的原因：用户名或邮箱已存在、数据库错误等
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "注册失败",
@@ -96,6 +136,8 @@ func (c *AuthController) Register(ctx *gin.Context) {
 		return
 	}
 
+	// 注册成功，返回201 Created状态码和用户信息
+	// 注意：返回的用户信息不包含密码
 	ctx.JSON(http.StatusCreated, gin.H{
 		"success": true,
 		"message": "注册成功",

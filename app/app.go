@@ -163,44 +163,103 @@ func NewApp() *App {
 }
 
 // Run 启动应用
+//
 // 功能说明：
 // 1. 创建HTTP服务器实例
-// 2. 配置优雅关闭超时时间（30秒）
+// 2. 在goroutine中启动服务器监听
 // 3. 监听系统信号（SIGINT、SIGTERM）
-// 4. 启动服务器监听指定端口
-// 5. 收到关闭信号时优雅关闭服务器
+// 4. 收到关闭信号时优雅关闭服务器
+// 5. 清理资源（数据库连接、日志管理器等）
 // 6. 记录服务器启动和关闭日志
+//
+// 启动流程：
+// 1. 创建HTTP服务器，配置地址和处理器
+// 2. 在goroutine中启动服务器（不阻塞主流程）
+// 3. 监听系统信号（SIGINT、SIGTERM）
+// 4. 收到信号后启动优雅关闭流程
+//
+// 优雅关闭流程：
+// 1. 停止接受新请求（Shutdown）
+// 2. 等待正在处理的请求完成（最多30秒）
+// 3. 关闭数据库连接
+// 4. 关闭日志管理器
+// 5. 记录关闭日志
+//
+// 信号处理：
+// - SIGINT: 中断信号（Ctrl+C）
+// - SIGTERM: 终止信号（kill命令）
+// - 收到信号后启动优雅关闭，不立即退出
+//
+// 超时处理：
+// - 优雅关闭超时时间：30秒
+// - 如果30秒内无法关闭，强制关闭
+// - 这确保服务器不会无限期等待
+//
+// 资源清理：
+// - 关闭数据库连接池
+// - 关闭日志管理器（刷新所有日志）
+// - 关闭存储管理器
+// - 关闭缓存服务
+//
+// 错误处理：
+// - 服务器启动失败：记录错误并退出
+// - 优雅关闭失败：强制关闭
+// - 资源清理失败：记录错误但不中断关闭流程
+//
+// 注意事项：
+// - 服务器在goroutine中启动，主流程等待信号
+// - 优雅关闭确保正在处理的请求能够完成
+// - 超时时间应该根据实际情况调整
+// - 资源清理应该按顺序进行，避免依赖问题
 func (app *App) Run() error {
 	// 创建HTTP服务器
+	// 配置服务器地址（端口）和请求处理器（Gin引擎）
 	srv := &http.Server{
-		Addr:    ":" + app.Config.Server.Port,
-		Handler: app.Router.Engine,
+		Addr:    ":" + app.Config.Server.Port, // 监听地址（例如：:8080）
+		Handler: app.Router.Engine,             // 请求处理器（Gin引擎，包含所有路由和中间件）
 	}
 
-	// 启动服务器
+	// 在goroutine中启动服务器
+	// 这样主流程可以继续执行，等待关闭信号
 	go func() {
 		log.Printf("Server starting on port %s", app.Config.Server.Port)
+		// 启动HTTP服务器，开始监听请求
+		// ListenAndServe会阻塞，直到服务器关闭
+		// http.ErrServerClosed是正常关闭，不应该报错
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()
 
 	// 等待中断信号
+	// 创建信号通道，用于接收系统信号
 	quit := make(chan os.Signal, 1)
+	// 注册信号处理器，监听SIGINT和SIGTERM信号
+	// SIGINT: Ctrl+C
+	// SIGTERM: kill命令
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	// 阻塞等待信号
 	<-quit
 
 	log.Println("Shutting down server...")
 
 	// 优雅关闭服务器
+	// 创建带超时的上下文，最多等待30秒
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	defer cancel() // 确保cancel被调用，释放资源
 
+	// 优雅关闭服务器
+	// Shutdown会：
+	// 1. 停止接受新请求
+	// 2. 等待正在处理的请求完成
+	// 3. 如果超时，返回错误
 	if err := srv.Shutdown(ctx); err != nil {
+		// 优雅关闭失败，强制关闭
 		log.Fatal("Server forced to shutdown:", err)
 	}
 
 	// 关闭数据库连接
+	// 关闭连接池，释放所有数据库连接
 	if err := Database.CloseDB(); err != nil {
 		log.Printf("Error closing database: %v", err)
 	}

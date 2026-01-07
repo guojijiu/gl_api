@@ -3,6 +3,7 @@ package Controllers
 import (
 	"cloud-platform-api/app/Models"
 	"cloud-platform-api/app/Services"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -533,17 +534,54 @@ func (c *PerformanceMonitoringController) filterAlerts(alerts []interface{}, sev
 }
 
 // validateAlertRuleRequest 验证告警规则请求
+//
+// 功能说明：
+// 1. 验证告警规则请求的参数是否有效
+// 2. 检查条件操作符是否支持
+// 3. 检查严重性级别是否有效
+//
+// 验证规则：
+// - 条件操作符：支持 >、<、>=、<=、==、!= 六种操作符
+// - 严重性级别：支持 critical、warning、info 三种级别
+//
+// 错误处理：
+// - 如果验证失败，返回详细的错误信息
+// - 错误信息包含具体的无效值，便于用户修复
+//
+// 安全考虑：
+// - 严格限制允许的操作符和级别，防止注入攻击
+// - 使用白名单验证，只允许预定义的值
 func (c *PerformanceMonitoringController) validateAlertRuleRequest(req *CreateAlertRuleRequest) error {
-	validConditions := map[string]bool{">": true, "<": true, ">=": true, "<=": true, "==": true, "!=": true}
+	// 定义允许的条件操作符（白名单）
+	// 只允许这六种操作符，防止注入攻击
+	validConditions := map[string]bool{
+		">":  true,
+		"<":  true,
+		">=": true,
+		"<=": true,
+		"==": true,
+		"!=": true,
+	}
+	
+	// 验证条件操作符是否在允许列表中
 	if !validConditions[req.Condition] {
-		return gin.Error{Err: gin.Error{Err: gin.Error{Err: gin.Error{Err: nil}}}}
+		return fmt.Errorf("无效的条件操作符: %s", req.Condition)
 	}
 
-	validSeverities := map[string]bool{"critical": true, "warning": true, "info": true}
+	// 定义允许的严重性级别（白名单）
+	// 只允许这三种级别，确保告警级别的一致性
+	validSeverities := map[string]bool{
+		"critical": true, // 严重：需要立即处理
+		"warning":  true, // 警告：需要关注
+		"info":     true, // 信息：仅供参考
+	}
+	
+	// 验证严重性级别是否在允许列表中
 	if !validSeverities[req.Severity] {
-		return gin.Error{Err: gin.Error{Err: gin.Error{Err: gin.Error{Err: nil}}}}
+		return fmt.Errorf("无效的严重性级别: %s", req.Severity)
 	}
 
+	// 验证通过，返回nil
 	return nil
 }
 

@@ -92,104 +92,217 @@ func (s *AuthService) getDB() *gorm.DB {
 }
 
 // Register 用户注册
+//
 // 功能说明：
-// 1. 验证用户输入数据
-// 2. 检查用户名和邮箱唯一性
-// 3. 验证密码强度
-// 4. 对密码进行安全哈希
-// 5. 创建新用户记录
-// 6. 返回用户信息（不含密码）
+// 1. 验证用户输入数据（格式、类型、长度等）
+// 2. 检查用户名和邮箱唯一性（防止重复注册）
+// 3. 验证密码强度（长度、复杂度等）
+// 4. 对密码进行安全哈希（Argon2id算法）
+// 5. 创建新用户记录（保存到数据库）
+// 6. 返回用户信息（不含密码，确保安全）
+//
+// 注册流程：
+// 1. 检查数据库连接是否可用
+// 2. 检查用户名是否已存在（唯一性验证）
+// 3. 检查邮箱是否已存在（唯一性验证）
+// 4. 验证密码强度（长度、字符类型等）
+// 5. 哈希密码（使用Argon2id算法）
+// 6. 创建用户记录（默认角色为"user"，状态为1）
+// 7. 清除密码字段（防止泄露）
+//
+// 安全措施：
+// - 密码哈希：使用Argon2id算法，防止密码泄露
+// - 唯一性检查：防止用户名和邮箱重复
+// - 密码强度验证：确保密码符合安全要求
+// - 返回数据清理：清除敏感信息（密码）
+//
+// 业务规则：
+// - 用户名必须唯一
+// - 邮箱必须唯一
+// - 密码必须符合强度要求（至少8字符，包含大小写字母和数字）
+// - 默认角色为"user"（普通用户）
+// - 默认状态为1（启用）
+//
+// 错误处理：
+// - 数据库连接不可用：返回错误
+// - 用户名已存在：返回"username already exists"
+// - 邮箱已存在：返回"email already exists"
+// - 密码强度不足：返回详细验证错误
+// - 密码哈希失败：返回错误
+// - 数据库保存失败：返回错误
+//
+// 性能考虑：
+// - 唯一性检查需要数据库查询，可能较慢
+// - 密码哈希是CPU密集型操作，但通常很快
+// - 可以使用数据库唯一索引优化唯一性检查
+//
+// 注意事项：
+// - 返回的用户对象不包含密码字段
+// - 用户名和邮箱的唯一性应该通过数据库唯一索引保证
+// - 密码哈希失败不应该继续创建用户
+// - 注册成功后可能需要发送验证邮件
 func (s *AuthService) Register(request Requests.RegisterRequest) (*Models.User, error) {
 	// 获取数据库连接
+	// 如果服务有自定义数据库连接，使用它；否则使用全局连接
 	db := s.getDB()
 	if db == nil {
 		return nil, errors.New("database connection not available")
 	}
 
 	// 检查用户名是否已存在
+	// 使用数据库查询检查唯一性
+	// 如果查询成功（err == nil），说明用户名已存在
 	var existingUser Models.User
 	if err := db.Where("username = ?", request.Username).First(&existingUser).Error; err == nil {
 		return nil, errors.New("username already exists")
 	}
 
 	// 检查邮箱是否已存在
+	// 使用数据库查询检查唯一性
+	// 如果查询成功（err == nil），说明邮箱已存在
 	if err := db.Where("email = ?", request.Email).First(&existingUser).Error; err == nil {
 		return nil, errors.New("email already exists")
 	}
 
 	// 验证密码强度
+	// 检查密码长度、字符类型等是否符合要求
+	// 返回验证结果和详细错误列表
 	isValid, validationErrors := Utils.ValidatePasswordStrength(request.Password)
 	if !isValid {
+		// 密码强度不足，返回详细错误信息
 		return nil, fmt.Errorf("password validation failed: %s", strings.Join(validationErrors, "; "))
 	}
 
 	// 哈希密码
+	// 使用Argon2id算法哈希密码，生成安全的哈希值
+	// 哈希后的密码不能还原为明文
 	hashedPassword, err := Utils.HashPassword(request.Password)
 	if err != nil {
 		return nil, err
 	}
 
-	// 创建用户
+	// 创建用户对象
+	// 设置用户名、邮箱、哈希密码、默认角色和状态
 	user := &Models.User{
-		Username: request.Username,
-		Email:    request.Email,
-		Password: hashedPassword,
-		Role:     "user",
-		Status:   1,
+		Username: request.Username, // 用户名
+		Email:    request.Email,    // 邮箱
+		Password: hashedPassword,   // 哈希后的密码（不是明文）
+		Role:     "user",           // 默认角色：普通用户
+		Status:   1,                 // 默认状态：启用
 	}
 
+	// 保存用户到数据库
+	// GORM会自动设置CreatedAt和UpdatedAt字段
 	if err := s.getDB().Create(user).Error; err != nil {
 		return nil, err
 	}
 
 	// 清除密码字段
+	// 防止密码泄露，即使密码是哈希值也不应该返回
 	user.Password = ""
 
+	// 返回用户信息（不含密码）
 	return user, nil
 }
 
 // Login 用户登录
+//
 // 功能说明：
-// 1. 验证用户名和密码
-// 2. 检查用户状态（是否被禁用）
-// 3. 更新最后登录时间和登录次数
-// 4. 生成JWT token
-// 5. 返回token和用户信息
+// 1. 根据用户名查找用户
+// 2. 验证密码是否正确（使用常量时间比较）
+// 3. 检查用户状态（是否被禁用）
+// 4. 更新最后登录时间和登录次数
+// 5. 生成JWT token用于后续认证
+// 6. 返回token和用户信息（不含密码）
+//
+// 登录流程：
+// 1. 根据用户名查找用户（数据库查询）
+// 2. 验证密码（使用Argon2id验证，常量时间比较）
+// 3. 检查用户状态（Status == 1表示启用）
+// 4. 更新最后登录时间（用于审计和统计）
+// 5. 生成JWT token（包含用户ID、用户名、邮箱、角色）
+// 6. 清除密码字段（防止泄露）
+//
+// 安全措施：
+// - 密码验证：使用常量时间比较，防止时序攻击
+// - 状态检查：防止禁用账户登录
+// - 统一错误：用户名不存在和密码错误返回相同错误，防止用户枚举
+// - 登录记录：更新登录时间，用于安全审计
+// - 数据清理：清除敏感信息（密码）
+//
+// 错误处理：
+// - 用户不存在：返回"invalid credentials"（不泄露用户存在性）
+// - 密码错误：返回"invalid credentials"（与用户不存在相同，防止用户枚举）
+// - 账户禁用：返回"account is disabled"（明确提示）
+// - 数据库错误：返回具体错误
+// - Token生成失败：返回错误
+//
+// 安全考虑：
+// - 用户名不存在和密码错误返回相同错误，防止攻击者通过错误信息判断用户是否存在
+// - 密码验证使用常量时间比较，防止时序攻击
+// - 登录失败不应该泄露具体原因（除了账户禁用）
+// - 应该限制登录尝试次数，防止暴力破解
+//
+// 性能考虑：
+// - 数据库查询使用索引优化（username字段应该有索引）
+// - 密码验证是CPU密集型操作，但通常很快
+// - 登录时间更新需要数据库写入，可能较慢
+//
+// 注意事项：
+// - 返回的用户对象不包含密码字段
+// - Token应该安全存储，建议使用HttpOnly Cookie
+// - 登录成功后可能需要记录登录日志
+// - 应该支持登录失败次数限制和账户锁定
 func (s *AuthService) Login(request Requests.LoginRequest) (string, *Models.User, error) {
-	// 查找用户
+	// 根据用户名查找用户
+	// 使用数据库查询，username字段应该有唯一索引
 	var user Models.User
 	if err := s.getDB().Where("username = ?", request.Username).First(&user).Error; err != nil {
+		// 用户不存在
+		// 注意：返回"invalid credentials"而不是"user not found"
+		// 这样可以防止攻击者通过错误信息判断用户是否存在（用户枚举攻击）
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", nil, errors.New("invalid credentials")
 		}
+		// 其他数据库错误
 		return "", nil, err
 	}
 
-	// 检查密码
+	// 验证密码
+	// 使用Argon2id验证，常量时间比较防止时序攻击
+	// 注意：密码错误也返回"invalid credentials"，与用户不存在相同
+	// 这样可以防止攻击者通过错误信息判断密码是否正确
 	if !Utils.CheckPassword(request.Password, user.Password) {
 		return "", nil, errors.New("invalid credentials")
 	}
 
 	// 检查用户状态
+	// Status == 1表示账户启用，其他值表示禁用
+	// 禁用的账户不能登录
 	if user.Status != 1 {
 		return "", nil, errors.New("account is disabled")
 	}
 
 	// 更新最后登录时间
+	// 用于安全审计和用户行为分析
 	user.UpdateLastLoginTime()
 	if err := s.getDB().Save(&user).Error; err != nil {
 		return "", nil, err
 	}
 
 	// 生成JWT token
+	// 包含用户ID、用户名、邮箱、角色等信息
+	// Token用于后续API请求的身份验证
 	token, err := Utils.GenerateToken(user.ID, user.Username, user.Email, user.Role)
 	if err != nil {
 		return "", nil, err
 	}
 
 	// 清除密码字段
+	// 防止密码泄露，即使密码是哈希值也不应该返回
 	user.Password = ""
 
+	// 返回token和用户信息（不含密码）
 	return token, &user, nil
 }
 

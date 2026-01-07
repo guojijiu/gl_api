@@ -63,27 +63,69 @@ func NewEnhancedValidationMiddleware(storageManager *Storage.StorageManager, con
 }
 
 // Handle 处理验证
+//
+// 功能说明：
+// 1. 多层安全验证，防止各种攻击
+// 2. 按顺序执行验证步骤，任何一步失败都会中止请求
+// 3. 记录验证失败的安全日志
+// 4. 返回详细的错误信息
+//
+// 验证步骤（按顺序执行）：
+// 1. 请求体大小验证：防止DoS攻击（大文件上传）
+// 2. Content-Type验证：确保请求格式正确
+// 3. 请求参数验证：验证参数格式和类型
+// 4. SQL注入检测：检测SQL注入攻击尝试
+// 5. XSS防护：检测跨站脚本攻击尝试
+// 6. 速率限制：防止请求频率过高
+//
+// 安全特性：
+// - 多层防护：多个验证步骤，提高安全性
+// - 可配置：每个验证步骤都可以通过配置启用/禁用
+// - 详细日志：记录所有验证失败事件，用于安全审计
+//
+// 错误处理：
+// - 每个验证步骤失败都会立即返回错误
+// - 错误信息包含错误代码、消息和详细信息
+// - 记录安全日志，用于问题排查和安全审计
+//
+// 性能考虑：
+// - 验证步骤按顺序执行，早期失败可以快速返回
+// - 某些验证步骤（如SQL注入检测）可能较慢
+// - 可以根据实际情况调整验证顺序
+//
+// 注意事项：
+// - 验证顺序很重要，应该先验证基础信息，再验证安全相关
+// - 验证失败时调用c.Abort()停止后续处理
+// - 安全日志应该包含足够的上下文信息
 func (m *EnhancedValidationMiddleware) Handle() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. 验证请求体大小
+		// 防止DoS攻击：大文件上传会消耗服务器资源
+		// 默认限制：10MB
 		if err := m.validateRequestSize(c); err != nil {
 			m.handleValidationError(c, "REQUEST_SIZE", "请求体过大", err.Error())
 			return
 		}
 
 		// 2. 验证Content-Type
+		// 确保请求格式正确，防止格式错误导致的问题
+		// 允许的类型：application/json、multipart/form-data等
 		if err := m.validateContentType(c); err != nil {
 			m.handleValidationError(c, "CONTENT_TYPE", "不支持的Content-Type", err.Error())
 			return
 		}
 
 		// 3. 验证请求参数
+		// 验证参数格式、类型、长度等
+		// 防止格式错误和类型不匹配
 		if err := m.validateRequestParams(c); err != nil {
 			m.handleValidationError(c, "PARAMS", "请求参数无效", err.Error())
 			return
 		}
 
 		// 4. SQL注入检测
+		// 检测SQL注入攻击尝试
+		// 可以通过配置启用/禁用
 		if m.config.EnableSQLInjection {
 			if err := m.detectSQLInjection(c); err != nil {
 				m.handleValidationError(c, "SQL_INJECTION", "检测到SQL注入尝试", err.Error())
@@ -92,6 +134,8 @@ func (m *EnhancedValidationMiddleware) Handle() gin.HandlerFunc {
 		}
 
 		// 5. XSS防护
+		// 检测跨站脚本攻击尝试
+		// 可以通过配置启用/禁用
 		if m.config.EnableXSSProtection {
 			if err := m.detectXSS(c); err != nil {
 				m.handleValidationError(c, "XSS", "检测到XSS攻击尝试", err.Error())
@@ -100,11 +144,14 @@ func (m *EnhancedValidationMiddleware) Handle() gin.HandlerFunc {
 		}
 
 		// 6. 速率限制
+		// 防止请求频率过高
+		// 可以通过配置启用/禁用
 		if err := m.checkRateLimit(c); err != nil {
 			m.handleValidationError(c, "RATE_LIMIT", "请求频率超限", err.Error())
 			return
 		}
 
+		// 所有验证通过，继续执行后续中间件和处理器
 		c.Next()
 	}
 }
@@ -233,26 +280,58 @@ func (m *EnhancedValidationMiddleware) checkRateLimit(c *gin.Context) error {
 }
 
 // handleValidationError 处理验证错误
+//
+// 功能说明：
+// 1. 记录验证失败的安全日志
+// 2. 返回统一的错误响应格式
+// 3. 中止后续处理，防止不安全请求继续执行
+//
+// 日志记录：
+// - 记录验证失败的所有相关信息
+// - 包括错误代码、消息、详细信息
+// - 包括客户端IP、User-Agent、URL、方法等
+// - 用于安全审计和问题排查
+//
+// 错误响应：
+// - 统一的错误响应格式
+// - 包含错误代码，便于前端处理
+// - 包含错误消息和详细信息
+// - 返回400 Bad Request状态码
+//
+// 安全考虑：
+// - 记录详细的安全日志，用于威胁分析
+// - 不返回敏感信息，避免信息泄露
+// - 中止后续处理，防止不安全请求继续执行
+//
+// 注意事项：
+// - 必须调用c.Abort()停止后续处理
+// - 日志应该包含足够的上下文信息
+// - 错误消息应该用户友好，但不要泄露系统信息
 func (m *EnhancedValidationMiddleware) handleValidationError(c *gin.Context, code, message, details string) {
 	// 记录安全日志
+	// 用于安全审计和问题排查
+	// 包含所有相关信息，便于分析攻击模式
 	m.storageManager.LogWarning("请求验证失败", map[string]interface{}{
-		"code":       code,
-		"message":    message,
-		"details":    details,
-		"client_ip":  c.ClientIP(),
-		"user_agent": c.Request.UserAgent(),
-		"url":        c.Request.URL.String(),
-		"method":     c.Request.Method,
-		"timestamp":  time.Now(),
+		"code":       code,                      // 错误代码（如SQL_INJECTION、XSS等）
+		"message":    message,                   // 错误消息
+		"details":    details,                   // 详细信息
+		"client_ip":  c.ClientIP(),              // 客户端IP（用于追踪攻击来源）
+		"user_agent": c.Request.UserAgent(),     // User-Agent（用于识别客户端）
+		"url":        c.Request.URL.String(),    // 请求URL
+		"method":     c.Request.Method,          // HTTP方法
+		"timestamp":  time.Now(),                 // 时间戳
 	})
 
 	// 返回错误响应
+	// 统一的错误响应格式，便于前端处理
 	c.JSON(http.StatusBadRequest, gin.H{
-		"success": false,
-		"message": message,
-		"code":    code,
-		"error":   details,
+		"success": false,  // 请求失败
+		"message": message, // 用户友好的错误消息
+		"code":    code,    // 错误代码（用于前端错误处理）
+		"error":   details, // 详细错误信息
 	})
+	
+	// 中止后续处理，防止不安全请求继续执行
 	c.Abort()
 }
 

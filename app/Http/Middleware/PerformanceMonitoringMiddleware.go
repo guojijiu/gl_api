@@ -30,33 +30,75 @@ func NewPerformanceMonitoringMiddleware(service *Services.OptimizedMonitoringSer
 }
 
 // Handler 性能监控中间件处理器
+//
+// 功能说明：
+// 1. 监控HTTP请求的性能指标
+// 2. 记录请求开始和结束时间
+// 3. 计算请求处理耗时
+// 4. 收集详细的性能数据（响应时间、状态码、请求大小等）
+// 5. 支持路径排除，避免监控不需要的路径
+//
+// 监控指标：
+// - 请求开始时间
+// - 请求处理耗时
+// - HTTP状态码
+// - 请求和响应大小
+// - 慢请求检测
+// - 错误请求统计
+//
+// 路径排除：
+// - 支持直接匹配和前缀匹配
+// - 排除的路径不进行监控，提高性能
+// - 常用于排除健康检查、静态资源等路径
+//
+// 性能考虑：
+// - 监控操作是轻量级的，对性能影响很小
+// - 指标记录是异步的，不阻塞请求处理
+// - 路径排除可以减少不必要的监控开销
+//
+// 使用场景：
+// - 性能分析和优化
+// - 问题诊断和排查
+// - 容量规划
+// - SLA监控
+//
+// 注意事项：
+// - 监控服务可能为nil，需要检查
+// - 监控数据会占用内存，需要定期清理
+// - 大量路径可能导致内存占用增加
 func (m *PerformanceMonitoringMiddleware) Handler() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 检查是否需要排除此路径
+		// 排除的路径不进行监控，提高性能
+		// 常用于排除健康检查、静态资源等路径
 		if m.shouldExcludePath(c.Request.URL.Path) {
 			c.Next()
 			return
 		}
 
-		// 记录开始时间
+		// 记录开始时间，用于计算请求处理耗时
 		startTime := time.Now()
 
-		// 设置监控上下文
+		// 设置监控上下文，供后续中间件和处理器使用
+		// 这些信息可以用于更详细的监控和分析
 		c.Set("monitor_start_time", startTime)
 		c.Set("monitor_path", c.Request.URL.Path)
 		c.Set("monitor_method", c.Request.Method)
 
-		// 记录请求开始
+		// 记录请求开始指标
+		// 用于统计活跃请求数和请求频率
 		m.recordRequestStart(c)
 
-		// 处理请求
+		// 处理请求（执行后续中间件和处理器）
 		c.Next()
 
-		// 记录请求结束
+		// 记录请求结束时间
 		endTime := time.Now()
+		// 计算请求处理耗时
 		duration := endTime.Sub(startTime)
 
 		// 记录性能指标
+		// 包括响应时间、状态码、请求大小、响应大小等
 		m.recordRequestMetrics(c, duration)
 	}
 }
@@ -100,24 +142,70 @@ func (m *PerformanceMonitoringMiddleware) recordRequestStart(c *gin.Context) {
 }
 
 // recordRequestMetrics 记录请求指标
+//
+// 功能说明：
+// 1. 收集HTTP请求的详细性能指标
+// 2. 记录响应时间、状态码、请求大小、响应大小等
+// 3. 检测慢请求和错误请求
+// 4. 按状态码分类统计
+// 5. 按路径统计特定指标
+//
+// 记录的指标：
+// - response_time: 响应时间（毫秒）
+// - request_total: 请求总数
+// - request_errors: 错误请求数（状态码>=400）
+// - request_size_bytes: 请求大小（字节）
+// - response_size_bytes: 响应大小（字节）
+// - slow_requests: 慢请求数（耗时>1秒）
+// - requests_2xx/3xx/4xx/5xx: 按状态码分类统计
+//
+// 标签（Labels）：
+// - method: HTTP方法（GET、POST等）
+// - path: 请求路径
+// - status_code: HTTP状态码
+// - user_agent: User-Agent
+// - remote_ip: 客户端IP
+// - user_id: 用户ID（如果已认证）
+// - username: 用户名（如果已认证）
+//
+// 性能考虑：
+// - 指标记录是异步的，不阻塞请求处理
+// - 使用标签可以灵活查询和聚合指标
+// - 大量标签可能导致内存占用增加
+//
+// 使用场景：
+// - 性能分析和优化
+// - 问题诊断和排查
+// - 容量规划
+// - SLA监控
+//
+// 注意事项：
+// - 监控服务可能为nil，需要检查
+// - 慢请求阈值可以根据实际情况调整
+// - 标签值应该标准化，避免过多唯一值
 func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, duration time.Duration) {
+	// 检查监控服务是否已初始化
 	if m.monitoringService == nil {
 		return
 	}
 
+	// 获取HTTP状态码
 	statusCode := c.Writer.Status()
+	// 判断是否是错误请求（状态码>=400）
 	isError := statusCode >= 400
 
-	// 基础标签
+	// 构建基础标签
+	// 标签用于分类和聚合指标，便于查询和分析
 	labels := map[string]string{
-		"method":      c.Request.Method,
-		"path":        c.Request.URL.Path,
-		"status_code": strconv.Itoa(statusCode),
-		"user_agent":  c.Request.UserAgent(),
-		"remote_ip":   c.ClientIP(),
+		"method":      c.Request.Method,              // HTTP方法
+		"path":        c.Request.URL.Path,             // 请求路径
+		"status_code": strconv.Itoa(statusCode),      // HTTP状态码
+		"user_agent":  c.Request.UserAgent(),         // User-Agent
+		"remote_ip":   c.ClientIP(),                   // 客户端IP
 	}
 
-	// 添加用户信息（如果有）
+	// 添加用户信息（如果已认证）
+	// 这些信息可以用于用户行为分析和问题排查
 	if userID, exists := c.Get("user_id"); exists {
 		labels["user_id"] = getUserIDString(userID)
 	}
@@ -126,7 +214,8 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		labels["username"] = fmt.Sprintf("%v", username)
 	}
 
-	// 记录响应时间
+	// 记录响应时间（毫秒）
+	// 这是最重要的性能指标之一
 	m.monitoringService.RecordCustomMetric(
 		"http",
 		"response_time",
@@ -135,6 +224,7 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 	)
 
 	// 记录请求总数
+	// 用于统计请求频率和吞吐量
 	m.monitoringService.RecordCustomMetric(
 		"http",
 		"request_total",
@@ -142,7 +232,8 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		labels,
 	)
 
-	// 记录错误请求
+	// 记录错误请求（状态码>=400）
+	// 用于统计错误率和问题排查
 	if isError {
 		m.monitoringService.RecordCustomMetric(
 			"http",
@@ -152,7 +243,8 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		)
 	}
 
-	// 记录请求大小
+	// 记录请求大小（字节）
+	// 用于分析请求大小分布和带宽使用
 	if contentLength := c.Request.ContentLength; contentLength > 0 {
 		m.monitoringService.RecordCustomMetric(
 			"http",
@@ -162,7 +254,8 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		)
 	}
 
-	// 记录响应大小
+	// 记录响应大小（字节）
+	// 用于分析响应大小分布和带宽使用
 	responseSize := c.Writer.Size()
 	if responseSize > 0 {
 		m.monitoringService.RecordCustomMetric(
@@ -173,8 +266,10 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		)
 	}
 
-	// 记录慢请求
+	// 记录慢请求（耗时>1秒）
+	// 慢请求可能表示性能问题，需要重点关注
 	if duration > 1*time.Second {
+		// 创建慢请求专用标签，包含耗时信息
 		slowLabels := make(map[string]string)
 		for k, v := range labels {
 			slowLabels[k] = v
@@ -189,10 +284,12 @@ func (m *PerformanceMonitoringMiddleware) recordRequestMetrics(c *gin.Context, d
 		)
 	}
 
-	// 记录特定状态码
+	// 记录特定状态码指标
+	// 按状态码分类统计（2xx、3xx、4xx、5xx）
 	m.recordStatusCodeMetrics(statusCode, labels)
 
 	// 记录路径特定指标
+	// 按路径统计性能指标，便于分析特定API的性能
 	m.recordPathSpecificMetrics(c.Request.URL.Path, duration, labels)
 }
 

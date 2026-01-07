@@ -14,13 +14,54 @@ type ContainerInterface interface {
 }
 
 // BaseService 服务基类
+//
+// 功能说明：
+// 1. 提供所有服务的通用基础功能
+// 2. 管理依赖注入容器（用于服务解耦）
+// 3. 管理上下文（用于请求追踪和超时控制）
+// 4. 管理数据库连接（用于数据访问）
+//
+// 设计模式：
+// - 组合模式：所有服务都嵌入BaseService
+// - 依赖注入：通过容器管理服务依赖
+// - 上下文传递：支持请求级别的上下文管理
+//
+// 字段说明：
+// - container: 依赖注入容器（可选，用于服务解耦）
+// - ctx: 上下文（用于请求追踪、超时控制、取消操作）
+// - DB: 数据库连接（可以是*gorm.DB或其他数据库接口）
+//
+// 使用场景：
+// - 所有业务服务都应该嵌入BaseService
+// - 需要依赖注入的服务
+// - 需要上下文管理的服务
+// - 需要数据库访问的服务
 type BaseService struct {
-	container ContainerInterface
-	ctx       context.Context
-	DB        interface{} // 添加 DB 字段，用于数据库连接
+	container ContainerInterface // 依赖注入容器
+	ctx       context.Context    // 上下文
+	DB        interface{}         // 数据库连接（可以是*gorm.DB或其他数据库接口）
 }
 
 // NewBaseService 创建基础服务
+//
+// 功能说明：
+// 1. 创建新的BaseService实例
+// 2. 初始化默认值（容器为nil，上下文为Background）
+// 3. 返回可用的服务基类实例
+//
+// 初始化值：
+// - container: nil（将在运行时通过SetContainer设置）
+// - ctx: context.Background()（默认上下文）
+// - DB: nil（将在运行时设置）
+//
+// 使用场景：
+// - 创建新的服务实例
+// - 不需要容器的简单服务
+// - 测试环境中的服务创建
+//
+// 注意事项：
+// - 容器和DB可以在运行时通过方法设置
+// - 上下文可以通过WithContext方法创建新实例
 func NewBaseService() *BaseService {
 	return &BaseService{
 		container: nil, // 将在运行时设置
@@ -148,12 +189,46 @@ func (s *ServiceBase) IsInitialized() bool {
 }
 
 // ServiceManager 服务管理器
+//
+// 功能说明：
+// 1. 管理所有服务的注册和获取
+// 2. 提供服务的统一生命周期管理
+// 3. 支持服务的初始化和关闭
+// 4. 线程安全的服务访问
+//
+// 设计模式：
+// - 注册表模式：通过名称管理服务
+// - 单例模式：全局服务管理器
+// - 工厂模式：统一创建和管理服务
+//
+// 并发安全：
+// - 使用sync.RWMutex保护服务映射
+// - 支持并发读取和互斥写入
+// - 线程安全的服务注册和获取
+//
+// 使用场景：
+// - 应用启动时注册所有服务
+// - 运行时通过名称获取服务
+// - 应用关闭时统一关闭所有服务
 type ServiceManager struct {
-	services map[string]ServiceInterface
-	mu       sync.RWMutex
+	services map[string]ServiceInterface // 服务映射表（名称->服务实例）
+	mu       sync.RWMutex                // 读写锁（保护并发访问）
 }
 
 // NewServiceManager 创建服务管理器
+//
+// 功能说明：
+// 1. 创建新的ServiceManager实例
+// 2. 初始化服务映射表
+// 3. 返回可用的服务管理器
+//
+// 使用场景：
+// - 应用启动时创建服务管理器
+// - 测试环境中创建独立的服务管理器
+//
+// 注意事项：
+// - 每个ServiceManager实例独立管理自己的服务
+// - 建议使用全局服务管理器（GetGlobalServiceManager）
 func NewServiceManager() *ServiceManager {
 	return &ServiceManager{
 		services: make(map[string]ServiceInterface),
@@ -161,6 +236,24 @@ func NewServiceManager() *ServiceManager {
 }
 
 // Register 注册服务
+//
+// 功能说明：
+// 1. 将服务注册到管理器中
+// 2. 使用服务名称作为key
+// 3. 支持服务覆盖（同名服务会覆盖）
+//
+// 参数说明：
+// - name: 服务名称（唯一标识）
+// - service: 服务实例（必须实现ServiceInterface）
+//
+// 并发安全：
+// - 使用写锁保护注册操作
+// - 支持并发注册（会串行化）
+//
+// 注意事项：
+// - 同名服务会覆盖之前的服务
+// - 服务名称应该唯一且有意义
+// - 注册后服务不会自动初始化
 func (sm *ServiceManager) Register(name string, service ServiceInterface) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -168,6 +261,27 @@ func (sm *ServiceManager) Register(name string, service ServiceInterface) {
 }
 
 // Get 获取服务
+//
+// 功能说明：
+// 1. 根据服务名称获取服务实例
+// 2. 如果服务不存在返回错误
+// 3. 返回服务接口（便于使用）
+//
+// 参数说明：
+// - name: 服务名称（注册时使用的名称）
+//
+// 返回信息：
+// - ServiceInterface: 服务实例（如果存在）
+// - error: 错误信息（如果服务不存在）
+//
+// 并发安全：
+// - 使用读锁保护读取操作
+// - 支持并发读取
+//
+// 注意事项：
+// - 服务必须已注册才能获取
+// - 返回的服务可能未初始化
+// - 建议在获取后调用Initialize确保服务可用
 func (sm *ServiceManager) Get(name string) (ServiceInterface, error) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()

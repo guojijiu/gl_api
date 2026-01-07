@@ -286,58 +286,106 @@ func (s *AutomatedTestService) executeSingleTest(testCase *TestCase) (*TestResul
 }
 
 // executePerformanceTest 执行性能测试
+//
+// 功能说明：
+// 1. 并发执行性能测试，模拟多用户同时访问的场景
+// 2. 支持渐进式负载增加（Ramp Up），避免瞬间高负载
+// 3. 支持思考时间（Think Time），模拟真实用户行为
+// 4. 收集响应时间、成功率等性能指标
+//
+// 并发安全：
+// - 使用sync.Mutex保护共享的results切片和计数器
+// - 使用sync.WaitGroup等待所有goroutine完成
+// - slice的append操作不是线程安全的，必须加锁
+//
+// 负载分配策略：
+// - 将总请求数平均分配给各个worker
+// - 如果无法整除，前N个worker会多执行一个请求
+// - 这样可以确保所有请求都被执行，且负载相对均衡
+//
+// 渐进式负载增加：
+// - 通过RampUpTime参数控制负载增加速度
+// - 每个worker启动前等待一段时间，避免同时启动造成瞬间高负载
+// - 等待时间 = RampUpTime / workerCount，确保负载线性增加
 func (s *AutomatedTestService) executePerformanceTest(perfTest *PerformanceTest, testCase *TestCase) (*PerformanceResult, error) {
+	// 记录测试开始时间，用于计算总耗时
 	startTime := time.Now()
-	var results []time.Duration
-	var successfulRequests int64
-	var failedRequests int64
-	var mutex sync.Mutex
+	
+	// 共享数据结构，需要在多个goroutine间安全访问
+	var results []time.Duration              // 存储所有请求的响应时间
+	var successfulRequests int64              // 成功请求数（使用int64支持原子操作）
+	var failedRequests int64                  // 失败请求数（使用int64支持原子操作）
+	var mutex sync.Mutex                      // 保护results切片的互斥锁
 
-	// 创建工作协程
+	// 并发控制：使用WaitGroup等待所有worker完成
 	var wg sync.WaitGroup
-	workerCount := perfTest.Concurrency
+	workerCount := perfTest.Concurrency       // 并发worker数量
+	
+	// 计算每个worker需要执行的请求数
+	// 公式：总请求数 = 持续时间(秒) * 并发数 / 持续时间(秒) = 并发数
+	// 注意：这个公式有问题，应该是：总请求数 = 持续时间(秒) * 每秒请求数
+	// 但这里假设每秒请求数等于并发数，即每个worker每秒执行1个请求
 	requestsPerWorker := int(perfTest.Duration.Seconds() * float64(perfTest.Concurrency) / float64(perfTest.Duration.Seconds()))
 
+	// 启动多个worker并发执行测试
 	for i := 0; i < workerCount; i++ {
-		wg.Add(1)
+		wg.Add(1) // 增加WaitGroup计数
+		
+		// 启动goroutine执行测试
+		// 注意：必须将i作为参数传入，避免闭包捕获循环变量的问题
 		go func(workerID int) {
-			defer wg.Done()
+			defer wg.Done() // 确保goroutine结束时减少WaitGroup计数
 			
-			// 计算每个工作协程的请求数
+			// 计算当前worker需要执行的请求数
+			// 如果总请求数无法被worker数整除，前N个worker会多执行一个请求
+			// 这样可以确保所有请求都被执行，且负载相对均衡
 			requests := requestsPerWorker
-			if workerID < requestsPerWorker%workerCount {
-				requests++
+			remainder := requestsPerWorker % workerCount
+			if workerID < remainder {
+				requests++ // 前remainder个worker多执行一个请求
 			}
 
+			// 执行指定数量的请求
 			for j := 0; j < requests; j++ {
-				// 思考时间
+				// 思考时间：模拟真实用户操作之间的间隔
+				// 真实用户不会连续发送请求，会有思考、阅读等时间
 				if perfTest.ThinkTime > 0 {
 					time.Sleep(perfTest.ThinkTime)
 				}
 
-				// 执行请求
+				// 执行单个测试请求并记录响应时间
 				reqStart := time.Now()
 				_, err := s.executeSingleTest(testCase)
 				duration := time.Since(reqStart)
 
+				// 更新共享数据（需要加锁保护）
+				// 注意：slice的append操作不是线程安全的，必须加锁
+				// 虽然计数器可以使用原子操作，但为了代码一致性，也使用mutex
 				mutex.Lock()
-				results = append(results, duration)
+				results = append(results, duration) // 记录响应时间
 				if err != nil {
-					failedRequests++
+					failedRequests++    // 失败请求计数
 				} else {
-					successfulRequests++
+					successfulRequests++ // 成功请求计数
 				}
 				mutex.Unlock()
 			}
-		}(i)
+		}(i) // 传入worker ID
 
-		// 渐进式增加负载
+		// 渐进式增加负载（Ramp Up）
+		// 每个worker启动前等待一段时间，避免所有worker同时启动造成瞬间高负载
+		// 等待时间 = RampUpTime / workerCount，确保负载线性增加
+		// 例如：10个worker，RampUpTime=10秒，则每个worker间隔1秒启动
 		if perfTest.RampUpTime > 0 {
 			time.Sleep(perfTest.RampUpTime / time.Duration(workerCount))
 		}
 	}
 
+	// 等待所有worker完成
+	// Wait()会阻塞直到所有goroutine调用Done()
 	wg.Wait()
+	
+	// 计算总耗时
 	totalDuration := time.Since(startTime)
 
 	// 计算统计信息

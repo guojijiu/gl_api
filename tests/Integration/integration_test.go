@@ -4,7 +4,6 @@ import (
 	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Container"
 	"cloud-platform-api/app/Services"
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -272,7 +271,6 @@ func TestIntegrationConcurrentAccess(t *testing.T) {
 	// 缓存服务不需要初始化
 
 	// 并发设置缓存
-	ctx := context.Background()
 	concurrency := 10
 	done := make(chan bool, concurrency)
 
@@ -311,8 +309,6 @@ func TestIntegrationConcurrentAccess(t *testing.T) {
 func BenchmarkIntegrationCache(b *testing.B) {
 	cacheService := Services.NewCacheService(nil)
 	// 缓存服务不需要初始化
-
-	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

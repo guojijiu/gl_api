@@ -106,29 +106,74 @@ type Claims struct {
 }
 
 // GenerateToken 生成JWT令牌
+//
+// 功能说明：
+// 1. 生成包含用户信息的JWT令牌
+// 2. 使用HS256算法签名
+// 3. 设置过期时间、签发时间、生效时间等标准声明
+// 4. 包含用户ID、用户名、邮箱、角色等自定义声明
+//
+// 令牌结构：
+// - Header: 算法类型（HS256）
+// - Payload: 用户信息和标准声明
+// - Signature: 使用密钥签名的哈希值
+//
+// 标准声明（Registered Claims）：
+// - ExpiresAt: 过期时间（从配置读取）
+// - IssuedAt: 签发时间（当前时间）
+// - NotBefore: 生效时间（当前时间）
+// - Issuer: 签发者（从配置读取）
+// - Subject: 主题（用户ID）
+//
+// 自定义声明（Custom Claims）：
+// - UserID: 用户ID
+// - Username: 用户名
+// - Email: 邮箱
+// - Role: 用户角色
+//
+// 安全考虑：
+// - 使用HS256算法，密钥必须保密
+// - 过期时间应该合理设置（通常1-24小时）
+// - 密钥应该足够复杂，防止被破解
+// - 令牌不应该包含敏感信息（如密码）
+//
+// 使用场景：
+// - 用户登录后生成访问令牌
+// - 用于后续API请求的身份验证
+// - 支持无状态认证
+//
+// 注意事项：
+// - 密钥泄露会导致所有令牌失效
+// - 过期时间过短会影响用户体验
+// - 过期时间过长会增加安全风险
+// - 令牌应该通过HTTPS传输
 func (j *JWTUtils) GenerateToken(userID uint, username, email, role string) (string, error) {
 	// 设置过期时间
+	// 从配置读取过期小时数，默认24小时
 	expirationTime := time.Now().Add(time.Duration(j.config.ExpirationHours) * time.Hour)
 
-	// 创建声明
+	// 创建JWT声明（Claims）
+	// 包含用户信息和标准JWT声明
 	claims := &Claims{
-		UserID:   userID,
-		Username: username,
-		Email:    email,
-		Role:     role,
+		UserID:   userID,   // 用户ID
+		Username: username, // 用户名
+		Email:    email,    // 邮箱
+		Role:     role,     // 用户角色
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expirationTime),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    j.config.Issuer,
-			Subject:   fmt.Sprintf("%d", userID),
+			ExpiresAt: jwt.NewNumericDate(expirationTime), // 过期时间
+			IssuedAt:  jwt.NewNumericDate(time.Now()),    // 签发时间
+			NotBefore: jwt.NewNumericDate(time.Now()),    // 生效时间
+			Issuer:    j.config.Issuer,                    // 签发者
+			Subject:   fmt.Sprintf("%d", userID),          // 主题（用户ID）
 		},
 	}
 
-	// 创建令牌
+	// 创建JWT令牌
+	// 使用HS256算法（HMAC-SHA256）
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	// 签名令牌
+	// 使用密钥签名令牌
+	// 签名用于验证令牌的完整性和真实性
 	tokenString, err := token.SignedString([]byte(j.config.SecretKey))
 	if err != nil {
 		return "", fmt.Errorf("签名令牌失败: %v", err)
@@ -138,13 +183,52 @@ func (j *JWTUtils) GenerateToken(userID uint, username, email, role string) (str
 }
 
 // ValidateToken 验证JWT令牌
+//
+// 功能说明：
+// 1. 解析JWT令牌字符串
+// 2. 验证签名方法和签名有效性
+// 3. 验证令牌的过期时间和生效时间
+// 4. 返回令牌中的用户信息
+//
+// 验证步骤：
+// 1. 解析令牌：将字符串解析为JWT对象
+// 2. 验证签名方法：确保使用HS256算法
+// 3. 验证签名：使用密钥验证签名是否有效
+// 4. 验证过期时间：检查令牌是否已过期
+// 5. 验证生效时间：检查令牌是否已生效
+//
+// 安全验证：
+// - 签名验证：确保令牌未被篡改
+// - 过期验证：防止使用过期令牌
+// - 生效验证：防止使用未生效令牌
+// - 算法验证：防止算法替换攻击
+//
+// 错误处理：
+// - 解析失败：返回解析错误
+// - 签名无效：返回签名错误
+// - 已过期：返回过期错误
+// - 未生效：返回未生效错误
+//
+// 使用场景：
+// - 中间件验证请求中的JWT令牌
+// - API端点验证用户身份
+// - 刷新令牌前验证当前令牌
+//
+// 注意事项：
+// - 验证失败应该返回明确的错误信息
+// - 不应该泄露详细的验证失败原因（安全考虑）
+// - 过期令牌应该被拒绝，不能刷新
+// - 验证过程应该快速，避免影响性能
 func (j *JWTUtils) ValidateToken(tokenString string) (*Claims, error) {
 	// 解析令牌
+	// ParseWithClaims会解析令牌并验证签名
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		// 验证签名方法
+		// 确保使用HS256算法，防止算法替换攻击
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("意外的签名方法: %v", token.Header["alg"])
 		}
+		// 返回密钥，用于验证签名
 		return []byte(j.config.SecretKey), nil
 	})
 
@@ -152,27 +236,32 @@ func (j *JWTUtils) ValidateToken(tokenString string) (*Claims, error) {
 		return nil, fmt.Errorf("解析令牌失败: %v", err)
 	}
 
-	// 验证令牌
+	// 验证令牌有效性
+	// token.Valid会检查签名是否有效
 	if !token.Valid {
 		return nil, errors.New("令牌无效")
 	}
 
 	// 获取声明
+	// 将Claims转换为自定义的Claims类型
 	claims, ok := token.Claims.(*Claims)
 	if !ok {
 		return nil, errors.New("无法解析令牌声明")
 	}
 
 	// 验证过期时间
+	// 如果令牌已过期，拒绝使用
 	if claims.ExpiresAt != nil && time.Now().After(claims.ExpiresAt.Time) {
 		return nil, errors.New("令牌已过期")
 	}
 
 	// 验证生效时间
+	// 如果令牌尚未生效，拒绝使用
 	if claims.NotBefore != nil && time.Now().Before(claims.NotBefore.Time) {
 		return nil, errors.New("令牌尚未生效")
 	}
 
+	// 验证通过，返回声明
 	return claims, nil
 }
 

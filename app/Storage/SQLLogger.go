@@ -61,10 +61,11 @@ func (sl *SQLLoggerImpl) LogQuery(query string, args []interface{}, duration tim
 		sl.StorageManager.LogError("SQL查询执行失败", sqlLog)
 	} else {
 		sl.StorageManager.LogInfo("SQL查询执行成功", map[string]interface{}{
-			"category": "sql",
-			"query":    sqlLog["query"],
-			"duration": sqlLog["duration"],
-			"rows":     sqlLog["rows"],
+			"category":    "sql",
+			"query":       sqlLog["query"],
+			"duration_ms": sqlLog["duration_ms"],
+			"duration_ns": sqlLog["duration_ns"],
+			"args":        sqlLog["args"],
 		})
 	}
 }

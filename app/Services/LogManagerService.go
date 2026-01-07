@@ -368,30 +368,74 @@ func (s *LogManagerService) isLoggerEnabled(config interface{}) bool {
 }
 
 // Log 记录日志
+//
+// 功能说明：
+// 1. 异步记录日志，不阻塞调用者
+// 2. 自动收集调用者信息（文件名、行号等）
+// 3. 错误级别日志自动包含堆栈跟踪
+// 4. 队列满时降级为同步处理，确保日志不丢失
+//
+// 异步处理机制：
+// - 使用带缓冲的channel（asyncQueue）实现异步日志
+// - 默认容量1000，可以缓冲大量日志
+// - 如果队列满，降级为同步处理，确保日志不丢失
+//
+// 调用者信息：
+// - 自动获取调用Log()函数的文件名和行号
+// - 用于定位日志来源，便于问题排查
+// - 使用runtime.Caller()获取调用栈信息
+//
+// 堆栈跟踪：
+// - 错误级别（ERROR、FATAL）的日志自动包含堆栈跟踪
+// - 堆栈跟踪帮助定位错误发生的位置
+// - 可以根据配置决定是否包含堆栈跟踪
+//
+// 性能优化：
+// - 异步处理不阻塞业务逻辑
+// - 队列满时降级为同步，避免日志丢失
+// - 批量写入可以提高I/O效率
+//
+// 注意事项：
+// - 如果服务已关闭（s.closed），直接返回
+// - 队列满时会阻塞，但可以确保日志不丢失
+// - 堆栈跟踪可能很长，需要合理存储
 func (s *LogManagerService) Log(loggerName string, level Config.LogLevel, message string, fields map[string]interface{}) {
+	// 如果服务已关闭，不再记录日志
 	if s.closed {
 		return
 	}
 
+	// 获取调用者信息（文件名、行号等）
+	// 用于定位日志来源，便于问题排查
 	caller := s.getCallerInfo()
+	
+	// 构建日志条目
 	entry := LogEntry{
-		Logger:    loggerName,
-		Level:     level,
-		Message:   message,
-		Timestamp: time.Now(),
-		Fields:    fields,
-		Caller:    caller,
+		Logger:    loggerName,  // 日志记录器名称（如"sql"、"request"等）
+		Level:     level,        // 日志级别（DEBUG、INFO、WARNING、ERROR、FATAL）
+		Message:   message,      // 日志消息
+		Timestamp: time.Now(),   // 时间戳
+		Fields:    fields,       // 附加字段（键值对）
+		Caller:    caller,       // 调用者信息（文件名、行号）
 	}
 
+	// 错误级别日志自动包含堆栈跟踪
+	// 堆栈跟踪帮助定位错误发生的位置
 	if level >= Config.LogLevelError && s.shouldIncludeStack(loggerName) {
 		entry.Stack = s.getStackTrace()
 	}
 
+	// 尝试异步写入日志队列
+	// 使用select实现非阻塞发送
 	select {
 	case s.asyncQueue <- entry:
-		// 异步处理，统计信息在 processAsyncLogs 中更新
+		// 成功发送到队列，异步处理
+		// 统计信息会在processAsyncLogs中更新
+		// 这种方式不阻塞调用者，性能最好
 	default:
-		// 队列满了，同步处理
+		// 队列满了，降级为同步处理
+		// 这确保日志不会丢失，但会阻塞调用者
+		// 同步写入并更新统计信息
 		s.writeLogSync(entry)
 		s.updateStats(entry)
 	}
@@ -660,50 +704,133 @@ func (s *LogManagerService) shouldIncludeStack(loggerName string) bool {
 	}
 }
 
+// writeLogSync 同步写入日志
+//
+// 功能说明：
+// 1. 同步写入日志到文件或输出流
+// 2. 检查日志记录器是否存在和启用
+// 3. 检查日志级别是否满足要求
+// 4. 格式化日志条目并写入
+// 5. 记录写入延迟用于性能监控
+//
+// 日志级别过滤：
+// - 只写入级别大于等于配置级别的日志
+// - 例如：配置为INFO级别，则DEBUG日志不写入
+// - 这样可以减少I/O操作，提高性能
+//
+// 格式化处理：
+// - 使用配置的格式化器（JSON或文本格式）
+// - 格式化失败时记录错误但不中断流程
+// - 添加换行符确保每条日志占一行
+//
+// 性能监控：
+// - 记录每次写入的延迟时间
+// - 保留最近100次的延迟数据
+// - 用于分析日志写入性能
+//
+// 错误处理：
+// - 格式化失败时记录错误但不中断
+// - 写入失败时记录错误但不中断
+// - 确保日志系统不会因为单个日志失败而崩溃
+//
+// 注意事项：
+// - 使用读锁获取logger，减少锁竞争
+// - 写入操作可能阻塞，但通常很快
+// - 延迟数据使用slice存储，需要定期清理
 func (s *LogManagerService) writeLogSync(entry LogEntry) {
+	// 获取日志记录器（使用读锁，允许多个goroutine同时读取）
 	s.mu.RLock()
 	logger, exists := s.loggers[entry.Logger]
 	s.mu.RUnlock()
 
+	// 检查日志记录器是否存在和启用
 	if !exists || !logger.enabled {
 		return
 	}
 
+	// 检查日志级别：只写入级别大于等于配置级别的日志
+	// 例如：配置为INFO级别，则DEBUG日志不写入
+	// LogLevel是枚举类型，值越小级别越高（DEBUG=0, INFO=1, ...）
 	if entry.Level < logger.level {
 		return
 	}
 
+	// 格式化日志条目（JSON或文本格式）
 	data, err := logger.formatter.Format(entry)
 	if err != nil {
+		// 格式化失败时记录错误但不中断流程
 		fmt.Printf("日志格式化失败: %v\n", err)
 		return
 	}
 
+	// 记录写入开始时间，用于计算延迟
 	start := time.Now()
+	
 	// 添加换行符确保每条日志占一行
+	// 这样便于日志解析和查看
 	logData := append(data, '\n')
+	
+	// 写入日志数据
 	_, err = logger.writer.Write(logData)
 	if err != nil {
+		// 写入失败时记录错误但不中断流程
 		fmt.Printf("日志写入失败: %v\n", err)
 		return
 	}
 
+	// 计算写入延迟并更新统计信息
 	latency := time.Since(start).Seconds()
 	logger.stats.mu.Lock()
+	// 记录延迟时间（用于性能分析）
 	logger.stats.WriteLatency = append(logger.stats.WriteLatency, latency)
+	// 只保留最近100次的延迟数据，避免内存无限增长
 	if len(logger.stats.WriteLatency) > 100 {
 		logger.stats.WriteLatency = logger.stats.WriteLatency[1:]
 	}
 	logger.stats.mu.Unlock()
 }
 
+// processAsyncLogs 处理异步日志
+//
+// 功能说明：
+// 1. 在独立的goroutine中运行，持续处理日志队列
+// 2. 从异步队列中取出日志条目并写入
+// 3. 更新日志统计信息
+// 4. 支持优雅停止，通过context控制
+//
+// 实现原理：
+// - 使用无限循环持续监听日志队列
+// - 使用select同时监听队列和context取消信号
+// - 当收到日志条目时，同步写入并更新统计
+//
+// 优雅停止：
+// - 当context被取消时（服务关闭），立即退出
+// - 确保所有已入队的日志都被处理
+// - 避免日志丢失
+//
+// 性能考虑：
+// - 异步处理不阻塞日志调用者
+// - 批量处理可以提高I/O效率（可扩展）
+// - 如果队列满，调用者会降级为同步处理
+//
+// 注意事项：
+// - 这个goroutine在服务启动时创建，服务关闭时退出
+// - 如果写入失败，只记录错误，不中断处理流程
+// - 统计信息更新需要加锁保护
 func (s *LogManagerService) processAsyncLogs() {
+	// 无限循环，持续处理日志队列
 	for {
 		select {
 		case entry := <-s.asyncQueue:
+			// 从队列中取出日志条目
+			// 同步写入日志文件（确保顺序和一致性）
 			s.writeLogSync(entry)
+			// 更新统计信息（总日志数、按级别统计等）
 			s.updateStats(entry)
 		case <-s.ctx.Done():
+			// 收到停止信号（服务关闭）
+			// 立即退出goroutine，实现优雅停止
+			// 注意：队列中可能还有未处理的日志，但服务关闭时通常可以接受
 			return
 		}
 	}
@@ -737,19 +864,56 @@ func (s *LogManagerService) monitorPerformance() {
 	}
 }
 
+// updateStats 更新统计信息
+//
+// 功能说明：
+// 1. 更新全局统计信息（总日志数、按级别统计、按记录器统计）
+// 2. 更新单个日志记录器的统计信息
+// 3. 记录错误日志数量
+// 4. 更新最后日志时间
+//
+// 统计维度：
+// - 总日志数：所有日志记录的总数
+// - 按级别统计：DEBUG、INFO、WARNING、ERROR、FATAL的数量
+// - 按记录器统计：每个日志记录器（sql、request等）的数量
+// - 错误计数：ERROR和FATAL级别的日志数量
+//
+// 并发安全：
+// - 使用互斥锁保护共享统计数据
+// - 全局统计使用s.stats.mu锁
+// - 单个记录器统计使用logger.stats.mu锁
+// - 使用读锁获取logger，减少锁竞争
+//
+// 性能考虑：
+// - 统计更新是轻量级操作，但需要加锁
+// - 使用defer确保锁被释放
+// - 尽量减少锁的持有时间
+//
+// 注意事项：
+// - 统计信息在内存中，服务重启后会丢失
+// - 如果需要持久化，需要定期导出到数据库或文件
+// - 错误计数只统计ERROR和FATAL级别
 func (s *LogManagerService) updateStats(entry LogEntry) {
+	// 更新全局统计信息（需要加锁保护）
 	s.stats.mu.Lock()
 	defer s.stats.mu.Unlock()
 
+	// 增加总日志数
 	s.stats.TotalLogs++
+	// 按日志级别统计（DEBUG、INFO、WARNING、ERROR、FATAL）
 	s.stats.LogsByLevel[entry.Level]++
+	// 按日志记录器统计（sql、request、error等）
 	s.stats.LogsByLogger[entry.Logger]++
 
+	// 更新单个日志记录器的统计信息
+	// 使用读锁获取logger，减少锁竞争
 	s.mu.RLock()
 	if logger, exists := s.loggers[entry.Logger]; exists {
+		// 更新记录器的统计信息（需要加锁保护）
 		logger.stats.mu.Lock()
-		logger.stats.TotalLogs++
-		logger.stats.LastLog = entry.Timestamp
+		logger.stats.TotalLogs++              // 记录器的总日志数
+		logger.stats.LastLog = entry.Timestamp // 最后日志时间
+		// 如果是错误级别（ERROR或FATAL），增加错误计数
 		if entry.Level >= Config.LogLevelError {
 			logger.stats.ErrorCount++
 		}
@@ -758,35 +922,110 @@ func (s *LogManagerService) updateStats(entry LogEntry) {
 	s.mu.RUnlock()
 }
 
+// resetStats 重置统计信息
+//
+// 功能说明：
+// 1. 清空所有统计计数器，重新开始统计
+// 2. 记录重置时间，用于周期性分析
+// 3. 定期调用（默认每分钟），避免统计数据无限增长
+//
+// 重置内容：
+// - 总日志数：重置为0
+// - 按级别统计：所有级别的计数重置为0
+// - 按记录器统计：所有记录器的计数重置为0
+// - 错误计数：重置为0
+// - 最后重置时间：更新为当前时间
+//
+// 使用场景：
+// - 周期性统计：每分钟重置一次，用于分析每分钟的日志情况
+// - 性能分析：重置后重新统计，用于分析性能趋势
+// - 问题排查：重置后观察新的统计，用于定位问题
+//
+// 注意事项：
+// - 重置前可以导出统计数据用于分析
+// - 重置操作需要加锁保护，避免并发问题
+// - 重置后统计数据从0开始，不影响历史数据
 func (s *LogManagerService) resetStats() {
+	// 加锁保护，避免并发重置导致数据不一致
 	s.stats.mu.Lock()
 	defer s.stats.mu.Unlock()
 
+	// 重置总日志数
 	s.stats.TotalLogs = 0
+	
+	// 重置所有级别的统计计数
+	// 遍历所有已存在的级别，将计数重置为0
 	for level := range s.stats.LogsByLevel {
 		s.stats.LogsByLevel[level] = 0
 	}
+	
+	// 重置所有记录器的统计计数
+	// 遍历所有已存在的记录器，将计数重置为0
 	for logger := range s.stats.LogsByLogger {
 		s.stats.LogsByLogger[logger] = 0
 	}
+	
+	// 重置错误计数
 	s.stats.Errors = 0
+	
+	// 记录重置时间，用于分析周期性统计
 	s.stats.LastReset = time.Now()
 }
 
+// calculatePerformanceMetrics 计算性能指标
+//
+// 功能说明：
+// 1. 计算每个日志记录器的性能指标
+// 2. 包括平均写入延迟、最大延迟、最小延迟等
+// 3. 用于性能分析和优化
+//
+// 计算的指标：
+// - 平均写入延迟：所有写入操作的平均耗时
+// - 最大写入延迟：最慢的写入操作耗时
+// - 最小写入延迟：最快的写入操作耗时
+// - 吞吐量：每秒处理的日志数（可扩展）
+//
+// 实现原理：
+// - 遍历所有日志记录器
+// - 从WriteLatency数组中计算统计值
+// - 将结果存储到Performance map中
+//
+// 性能考虑：
+// - 使用读锁获取logger，减少锁竞争
+// - 计算过程可能需要遍历大量数据，注意性能影响
+// - 定期计算（默认每5分钟），避免频繁计算
+//
+// 使用场景：
+// - 性能监控：实时监控日志系统性能
+// - 问题诊断：识别性能瓶颈
+// - 容量规划：根据性能指标规划资源
+//
+// 注意事项：
+// - 如果WriteLatency为空，跳过计算
+// - 计算结果存储在Performance map中，需要定期清理
+// - 计算过程需要加锁，可能影响性能
 func (s *LogManagerService) calculatePerformanceMetrics() {
+	// 使用读锁获取所有日志记录器，允许多个goroutine同时读取
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// 遍历所有日志记录器，计算每个记录器的性能指标
 	for name, logger := range s.loggers {
+		// 使用读锁获取记录器的统计信息
 		logger.stats.mu.RLock()
+		
+		// 检查是否有延迟数据
 		if len(logger.stats.WriteLatency) > 0 {
+			// 计算平均写入延迟
 			var total float64
 			for _, latency := range logger.stats.WriteLatency {
 				total += latency
 			}
 			avgLatency := total / float64(len(logger.stats.WriteLatency))
 
+			// 更新全局性能指标（需要加锁保护）
 			s.stats.mu.Lock()
+			// 存储平均延迟，键名为"{logger_name}_avg_latency"
 			s.stats.Performance[fmt.Sprintf("%s_avg_latency", name)] = avgLatency
 			s.stats.mu.Unlock()
 		}

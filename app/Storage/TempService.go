@@ -16,6 +16,7 @@ type TempService struct {
 	basePath  string
 	tempFiles map[string]*TempFile
 	mu        sync.RWMutex
+	stopChan  chan struct{}
 }
 
 // TempFile 临时文件信息
@@ -33,6 +34,7 @@ func NewTempService(config *Config.StorageConfig) *TempService {
 		config:    config,
 		basePath:  filepath.Join(config.BasePath, "temp"),
 		tempFiles: make(map[string]*TempFile),
+		stopChan:  make(chan struct{}),
 	}
 
 	// 确保临时目录存在
@@ -269,14 +271,44 @@ func (ts *TempService) CleanAllTempFiles() error {
 }
 
 // startCleanupTask 启动清理任务
+//
+// 功能说明：
+// 1. 定期清理过期的临时文件，释放磁盘空间
+// 2. 在独立的goroutine中运行，不阻塞主流程
+// 3. 支持优雅停止，通过stopChan通道控制
+//
+// 实现原理：
+// - 使用time.Ticker定时触发清理任务（默认每小时一次）
+// - 使用select同时监听定时器和停止信号
+// - 当收到停止信号时，立即退出goroutine，避免资源泄漏
+//
+// 优雅停止机制：
+// - Close()方法会关闭stopChan通道
+// - 关闭的通道会立即返回零值，select会立即选择该case
+// - goroutine可以立即退出，不会无限阻塞
+//
+// 注意事项：
+// - defer ticker.Stop()确保ticker资源被释放
+// - 清理任务在后台运行，不会影响服务的正常使用
+// - 如果服务异常退出，goroutine也会自动结束（进程退出）
 func (ts *TempService) startCleanupTask() {
-	ticker := time.NewTicker(1 * time.Hour) // 每小时清理一次
-	defer ticker.Stop()
+	// 创建定时器，每小时触发一次清理任务
+	// Ticker会在指定时间间隔重复发送时间到通道
+	ticker := time.NewTicker(1 * time.Hour)
+	defer ticker.Stop() // 确保ticker资源被释放，避免泄漏
 
+	// 无限循环，持续监听定时器和停止信号
 	for {
 		select {
 		case <-ticker.C:
+			// 定时器触发，执行清理过期文件的操作
+			// CleanExpiredFiles会遍历所有临时文件，删除已过期的文件
 			ts.CleanExpiredFiles()
+		case <-ts.stopChan:
+			// 收到停止信号（stopChan被关闭）
+			// 关闭的通道会立即返回零值，select会立即选择该case
+			// 这样可以立即退出goroutine，实现优雅停止
+			return
 		}
 	}
 }
@@ -308,6 +340,30 @@ func (ts *TempService) GetTempStats() map[string]interface{} {
 }
 
 // Close 关闭临时文件服务
+//
+// 功能说明：
+// 1. 停止清理goroutine，避免goroutine泄漏
+// 2. 清理所有临时文件，释放磁盘空间
+// 3. 释放相关资源
+//
+// 优雅关闭流程：
+// 1. 关闭stopChan通道，通知清理goroutine停止
+// 2. 清理所有临时文件（包括未过期的）
+// 3. 返回清理过程中的错误（如果有）
+//
+// 注意事项：
+// - close(chan)操作是幂等的，多次关闭会panic
+// - 应该在服务关闭时调用，确保资源正确释放
+// - 清理所有文件可能会删除正在使用的临时文件，需要谨慎
 func (ts *TempService) Close() error {
+	// 关闭stopChan通道，发送停止信号给清理goroutine
+	// 注意：关闭通道后，所有等待该通道的goroutine都会立即收到零值
+	// 这会导致startCleanupTask中的select立即选择stopChan case并退出
+	// 如果通道已经关闭，再次关闭会panic，所以这里假设只调用一次
+	close(ts.stopChan)
+
+	// 清理所有临时文件（包括未过期的）
+	// 这会在服务关闭时释放所有临时文件占用的磁盘空间
+	// 注意：可能会删除正在使用的临时文件，需要确保调用时机正确
 	return ts.CleanAllTempFiles()
 }
