@@ -47,8 +47,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: cloud_platform
-      POSTGRES_USER: cloud_platform
-      POSTGRES_PASSWORD: cloud_platform_password
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: oqQyu31M4vhb5qli
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
@@ -101,7 +101,7 @@ services:
 
   # Prometheus（配置文件映射，使用精简配置以匹配当前 compose 服务）
   prometheus:
-    image: prom/prometheus:v2.47-alpine
+    image: prom/prometheus:v2.53.5
     container_name: cloud-platform-prometheus
     restart: unless-stopped
     ports:
@@ -121,7 +121,7 @@ services:
 
   # Grafana（环境变量管理密码，配置文件映射 dashboards/datasources）
   grafana:
-    image: grafana/grafana:10.2-alpine
+    image: grafana/grafana:10.2.9
     container_name: cloud-platform-grafana
     restart: unless-stopped
     ports:
