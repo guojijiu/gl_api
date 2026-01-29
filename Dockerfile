@@ -22,15 +22,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
 # 运行阶段
 FROM alpine:latest
 
-# 安装必要的包
-RUN apk --no-cache add ca-certificates tzdata
+# 安装必要的包（wget 用于健康检查）
+RUN apk --no-cache add ca-certificates tzdata wget
 
 # 设置时区
 ENV TZ=Asia/Shanghai
 
-# 创建非root用户
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+# 创建deploy用户
+RUN addgroup -g 1000 -S deploy && \
+    adduser -u 1000 -S deploy -G deploy
 
 # 设置工作目录
 WORKDIR /app
@@ -42,10 +42,10 @@ COPY --from=builder /app/main .
 COPY --from=builder /app/env.example .env
 
 # 更改文件所有者
-RUN chown -R appuser:appgroup /app
+RUN chown -R deploy:deploy /app
 
 # 切换到非root用户
-USER appuser
+USER deploy
 
 # 暴露端口
 EXPOSE 8080

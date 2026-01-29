@@ -1,3 +1,8 @@
+# Docker Compose 部署
+# 应用配置：直接用 .env（env_file），下面 environment 只写「在容器里必须不同的」几项：
+#   - 容器内没有 localhost 上的数据库/Redis，必须用服务名 postgres / redis 作为主机名
+# 其余（端口、账号密码、JWT、日志等）全部由 .env 提供，无需在 compose 里重复。
+# 首次运行：cp env.example .env，并设置 JWT_SECRET；.env 里数据库账号密码需与下方 postgres 服务一致。
 version: '3.8'
 
 services:
@@ -10,51 +15,55 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    env_file:
+      - .env
     environment:
-      - GIN_MODE=release
-      - ENVIRONMENT=production
-      - SERVER_PORT=8080
-      - SERVER_MODE=production
-      - DB_DRIVER=postgres
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USERNAME=cloud_platform
-      - DB_PASSWORD=cloud_platform_password
-      - DB_DATABASE=cloud_platform
-      - DB_CHARSET=utf8mb4
+      # 仅 4 项：容器内必须用服务名连数据库和 Redis，其余一律用 .env
+      - DATABASE_HOST=postgres
+      - DATABASE_DRIVER=postgres
+      - DATABASE_PORT=5432
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=
-      - REDIS_DATABASE=0
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_EXPIRE_TIME=24
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./storage:/app/storage
       - app_logs:/app/logs
     networks:
       - cloud-platform-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/v1/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
-  # PostgreSQL数据库
+  # PostgreSQL 数据库（环境变量为标准方式）
   postgres:
     image: postgres:15-alpine
     container_name: cloud-platform-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=cloud_platform
-      - POSTGRES_USER=cloud_platform
-      - POSTGRES_PASSWORD=cloud_platform_password
+      POSTGRES_DB: cloud_platform
+      POSTGRES_USER: cloud_platform
+      POSTGRES_PASSWORD: cloud_platform_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     ports:
       - "5432:5432"
     networks:
       - cloud-platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloud_platform -d cloud_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  # Redis缓存
+  # Redis 缓存（环境变量 + 配置文件通过 command 体现）
   redis:
     image: redis:7-alpine
     container_name: cloud-platform-redis
@@ -66,8 +75,14 @@ services:
       - "6379:6379"
     networks:
       - cloud-platform-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
-  # Nginx反向代理
+  # Nginx 反向代理（配置文件映射，无复杂运行时变量）
   nginx:
     image: nginx:alpine
     container_name: cloud-platform-nginx
@@ -76,23 +91,23 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
       - app_logs:/var/log/nginx
     depends_on:
       - app
     networks:
       - cloud-platform-network
 
-  # 监控服务 (可选)
+  # Prometheus（配置文件映射，使用精简配置以匹配当前 compose 服务）
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.47-alpine
     container_name: cloud-platform-prometheus
     restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus.docker.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -104,19 +119,20 @@ services:
     networks:
       - cloud-platform-network
 
-  # Grafana监控面板 (可选)
+  # Grafana（环境变量管理密码，配置文件映射 dashboards/datasources）
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.2-alpine
     container_name: cloud-platform-grafana
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
     depends_on:
       - prometheus
     networks:
