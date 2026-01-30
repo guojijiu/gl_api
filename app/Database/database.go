@@ -428,8 +428,7 @@ func initDB() {
 			dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai connect_timeout=30",
 				cfg.Host, cfg.Username, cfg.Password, cfg.Database, cfg.Port)
 			DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-				Logger:                                   getGormLogger(),
-				DisableForeignKeyConstraintWhenMigrating: true,
+				Logger: getGormLogger(),
 			})
 
 		case "sqlite":

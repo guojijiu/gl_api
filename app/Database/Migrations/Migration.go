@@ -195,9 +195,9 @@ func (m *MigrationManager) ResetMigrations() error {
 func (m *MigrationManager) GetMigrationFiles() []MigrationInterface {
 	return []MigrationInterface{
 		&CreateUsersTable{},
+		&CreatePostsTable{},
 		&CreateCategoriesTable{},
 		&CreateTagsTable{},
-		&CreatePostsTable{},
 		&CreateAuditLogsTable{},
 	}
 }

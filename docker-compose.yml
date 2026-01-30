@@ -2,7 +2,7 @@
 # 应用配置：直接用 .env（env_file），下面 environment 只写「在容器里必须不同的」几项：
 #   - 容器内没有 localhost 上的数据库/Redis，必须用服务名 postgres / redis 作为主机名
 # 其余（端口、账号密码、JWT、日志等）全部由 .env 提供，无需在 compose 里重复。
-# 首次运行：cp env.example .env，并设置 JWT_SECRET；.env 里数据库账号密码需与下方 postgres 服务一致。
+# 首次运行：cp env.example .env，并设置 JWT_SECRET；.env 里数据库账号密码需与下方 mysql 服务一致。
 version: '3.8'
 
 services:
@@ -19,12 +19,12 @@ services:
       - .env
     environment:
       # 仅 4 项：容器内必须用服务名连数据库和 Redis，其余一律用 .env
-      - DATABASE_HOST=postgres
-      - DATABASE_DRIVER=postgres
-      - DATABASE_PORT=5432
+      - DATABASE_HOST=mysql
+      - DATABASE_DRIVER=mysql
+      - DATABASE_PORT=3306
       - REDIS_HOST=redis
     depends_on:
-      postgres:
+      mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -40,23 +40,24 @@ services:
       retries: 3
       start_period: 15s
 
-  # PostgreSQL 数据库（环境变量为标准方式）
-  postgres:
-    image: postgres:15-alpine
-    container_name: cloud-platform-postgres
+  # MySQL 数据库（环境变量为标准方式）
+  mysql:
+    image: mysql:8.0
+    container_name: cloud-platform-mysql
     restart: unless-stopped
     environment:
-      POSTGRES_DB: cloud_platform
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: oqQyu31M4vhb5qli
+      MYSQL_DATABASE: cloud_platform
+      MYSQL_USER: cloud_platform
+      MYSQL_PASSWORD: oqQyu31M4vhb5qli
+      MYSQL_ROOT_PASSWORD: root_password_change_me
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
     ports:
-      - "5432:5432"
+      - "3306:3306"
     networks:
       - cloud-platform-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cloud_platform -d cloud_platform"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -138,7 +139,7 @@ services:
       - cloud-platform-network
 
 volumes:
-  postgres_data:
+  mysql_data:
     driver: local
   redis_data:
     driver: local
