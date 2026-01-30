@@ -248,6 +248,8 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 
 	// 监控路由
 	monitoringController := Controllers.NewMonitoringController()
+	// 注入监控服务，否则 /metrics 会返回 500（监控服务未初始化）
+	monitoringController.SetMonitoringService(monitoringService)
 	monitoringGroup := v1.Group("/monitoring")
 	{
 		monitoringGroup.GET("/metrics", monitoringController.GetMetrics)
