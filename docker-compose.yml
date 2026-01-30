@@ -34,7 +34,9 @@ services:
     networks:
       - cloud-platform-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health", "||", "exit", "1"]
+      # 注意：带 "|| exit 1" 必须使用 CMD-SHELL，否则不会被解析，导致一直 unhealthy
+      # 这里使用 /health/live 做存活探测（不依赖 DB/Redis/Storage）
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/health/live || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
