@@ -23,6 +23,7 @@ services:
       - DATABASE_DRIVER=mysql
       - DATABASE_PORT=3306
       - REDIS_HOST=redis
+      - GOPROXY=https://goproxy.cn,direct
     depends_on:
       mysql:
         condition: service_healthy
