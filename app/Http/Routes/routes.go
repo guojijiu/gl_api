@@ -106,6 +106,13 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	// 创建请求统计中间件
 	// 用于收集和分析请求统计信息
 	monitoringService := Services.NewOptimizedMonitoringService()
+	// 启动监控服务（用于 /metrics 暴露 Prometheus 指标 & 后台定时收集）
+	// 注意：启动失败不应影响主服务启动，但需要记录日志便于排查
+	if err := monitoringService.Start(); err != nil {
+		logManager.LogBusiness(context.Background(), "monitoring", "start_failed", "监控服务启动失败", map[string]interface{}{
+			"error": err.Error(),
+		})
+	}
 	requestStatsMiddleware := Middleware.NewRequestStatsMiddleware(storageManager, monitoringService)
 
 	// 添加全局中间件
@@ -248,7 +255,6 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 
 	// 监控路由
 	monitoringController := Controllers.NewMonitoringController()
-	// 注入监控服务，否则 /metrics 会返回 500（监控服务未初始化）
 	monitoringController.SetMonitoringService(monitoringService)
 	monitoringGroup := v1.Group("/monitoring")
 	{

@@ -124,6 +124,10 @@ func (s *OptimizedMonitoringService) Start() error {
 		return fmt.Errorf("monitoring service is already running")
 	}
 
+	// 启动前先收集一次，避免容器刚启动时 Prometheus 首次抓取为空/报错
+	//（后续仍由 monitoringLoop 定期更新）
+	s.collectMetrics()
+
 	// 启动监控协程
 	go s.monitoringLoop()
 	go s.flushLoop()

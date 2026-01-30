@@ -50,6 +50,10 @@ func (c *MonitoringController) GetMetrics(ctx *gin.Context) {
 
 	// 获取查询参数
 	metricType := ctx.Query("type")
+	// Prometheus/健康探测一般不会带 query 参数，这里给一个默认值，避免 metricType 为空导致 500
+	if metricType == "" {
+		metricType = "system"
+	}
 	name := ctx.Query("name")
 	limitStr := ctx.DefaultQuery("limit", "100")
 	// startTimeStr := ctx.Query("start_time")
