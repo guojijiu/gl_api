@@ -141,17 +141,22 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 
 	// 基础健康检查：快速检查服务是否运行
 	engine.GET("/health", healthController.Health)
+	// 注意：docker 的健康检查/一些探活工具会使用 HEAD 请求
+	engine.HEAD("/health", healthController.Health)
 
 	// 详细健康检查：包含系统资源、数据库、缓存等详细信息
 	engine.GET("/health/detailed", healthController.DetailedHealth)
+	engine.HEAD("/health/detailed", healthController.DetailedHealth)
 
 	// 就绪检查：检查服务是否准备好接受请求
 	// 用于Kubernetes的readiness probe
 	engine.GET("/health/ready", healthController.Readiness)
+	engine.HEAD("/health/ready", healthController.Readiness)
 
 	// 存活检查：检查服务是否存活
 	// 用于Kubernetes的liveness probe
 	engine.GET("/health/live", healthController.Liveness)
+	engine.HEAD("/health/live", healthController.Liveness)
 
 	// 测试路由
 	v1.GET("/test", func(c *gin.Context) {
@@ -249,6 +254,10 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 		monitoringGroup.GET("/health", monitoringController.GetSystemHealth)
 		monitoringGroup.GET("/alerts", monitoringController.GetAlerts)
 	}
+
+	// Prometheus 默认抓取路径通常是 /metrics，这里提供一个顶层别名，避免 404 造成噪音
+	engine.GET("/metrics", monitoringController.GetMetrics)
+	engine.HEAD("/metrics", monitoringController.GetMetrics)
 
 	// WebSocket路由
 	wsController := Controllers.NewWebSocketController()
