@@ -7,6 +7,13 @@ WORKDIR /app
 # 安装必要的包
 RUN apk add --no-cache git ca-certificates tzdata
 
+# Go Modules 网络（构建阶段生效）
+# 可通过 docker build --build-arg 覆盖
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
+ENV GOPROXY=${GOPROXY}
+ENV GOSUMDB=${GOSUMDB}
+
 # 复制go mod文件
 COPY go.mod go.sum ./
 
