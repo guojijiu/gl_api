@@ -245,6 +245,16 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 		tagGroup.DELETE("/:id", tagController.DeleteTag)
 	}
 
+	// AI 机器人（平台 -> 业务类型 -> 意图）：
+	// - POST /chat：主问答入口（当前支持 project=1、task=2）
+	// - GET  /capabilities：查看当前生效能力矩阵（便于排查配置）
+	aiRobotController := Controllers.NewAiRobotController()
+	aiRobotGroup := v1.Group("/ai_robot")
+	{
+		aiRobotGroup.POST("/chat", aiRobotController.Chat)
+		aiRobotGroup.GET("/capabilities", aiRobotController.Capabilities)
+	}
+
 	// 管理员路由
 	adminController := Controllers.NewAdminController()
 	adminGroup := v1.Group("/admin")

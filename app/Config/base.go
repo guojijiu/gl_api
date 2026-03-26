@@ -68,6 +68,7 @@ type Config struct {
 	QueryOptimization QueryOptimizationConfig `mapstructure:"query_optimization"`
 	Security          SecurityConfig          `mapstructure:"security"`
 	Testing           TestConfig              `mapstructure:"testing"`
+	AiGateway         AiGatewayConfig         `mapstructure:"ai_gateway"`
 }
 
 var globalConfig *Config
@@ -86,6 +87,7 @@ func (c *Config) SetDefaults() {
 	c.QueryOptimization.SetDefaults()
 	c.Security.SetDefaults()
 	c.Testing.SetDefaults()
+	c.AiGateway.SetDefaults()
 }
 
 // BindEnvs 绑定所有配置的环境变量
@@ -102,6 +104,7 @@ func (c *Config) BindEnvs() {
 	c.QueryOptimization.BindEnvs()
 	c.Security.BindEnvs()
 	c.Testing.BindEnvs()
+	c.AiGateway.BindEnvs()
 }
 
 // LoadConfig 加载所有配置

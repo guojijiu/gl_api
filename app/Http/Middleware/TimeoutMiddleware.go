@@ -1,10 +1,12 @@
 package Middleware
 
 import (
+	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Storage"
 	"context"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -47,10 +49,24 @@ func NewTimeoutMiddleware(storageManager *Storage.StorageManager) *TimeoutMiddle
 // - storageManager需要nil检查，避免在未初始化时panic
 func (m *TimeoutMiddleware) Handle(timeout time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 默认使用全局超时（目前 routes.go 里传的是 30s）。
+		effectiveTimeout := timeout
+		// AI 机器人链路会调用大模型和云平台接口，30 秒通常不够。
+		// 这里按 AI 配置动态放宽超时，避免中间件先于业务超时。
+		if strings.HasPrefix(c.Request.URL.Path, "/api/v1/ai_robot/") {
+			if cfg := Config.GetAiGatewayConfig(); cfg != nil && cfg.LLMTimeoutSec > 0 {
+				aiTimeout := time.Duration(cfg.LLMTimeoutSec+15) * time.Second
+				// 仅放宽，不缩短，避免误伤其它已配置更长的场景。
+				if aiTimeout > effectiveTimeout {
+					effectiveTimeout = aiTimeout
+				}
+			}
+		}
+
 		// 创建超时上下文
 		// 注意：context.WithTimeout会创建一个在指定时间后自动取消的context
 		// 必须调用cancel()释放资源，即使context已经超时
-		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), effectiveTimeout)
 		defer cancel() // 确保资源释放，避免context泄漏
 
 		// 将超时上下文设置到请求中
@@ -89,7 +105,7 @@ func (m *TimeoutMiddleware) Handle(timeout time.Duration) gin.HandlerFunc {
 					"url":        c.Request.URL.String(),
 					"method":     c.Request.Method,
 					"client_ip":  c.ClientIP(),
-					"timeout":    timeout.String(),
+					"timeout":    effectiveTimeout.String(),
 					"user_agent": c.Request.UserAgent(),
 				})
 			}
