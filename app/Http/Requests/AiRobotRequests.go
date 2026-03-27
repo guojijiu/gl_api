@@ -24,6 +24,9 @@ const AiQuestionTypeProject = 1
 // AiQuestionTypeTask 提问类型：任务（工具任务/重分析/模块化等统一归到任务域）
 const AiQuestionTypeTask = 2
 
+// AiQuestionTypeProjectArticle 提问类型：项目文章
+const AiQuestionTypeProjectArticle = 3
+
 type AiPlatformCapability struct {
 	QuestionTypes map[int]struct{}
 }
@@ -31,8 +34,9 @@ type AiPlatformCapability struct {
 var aiPlatformCapabilities = map[string]AiPlatformCapability{
 	AiPlatformCloudPublic: {
 		QuestionTypes: map[int]struct{}{
-			AiQuestionTypeProject: {},
-			AiQuestionTypeTask:    {},
+			AiQuestionTypeProject:        {},
+			AiQuestionTypeTask:           {},
+			AiQuestionTypeProjectArticle: {},
 		},
 	},
 	AiPlatformCloudIntranet: {
@@ -82,7 +86,7 @@ type AiRobotChatRequest struct {
 	// Platform 平台标识：用于把同一套 AI 中转能力复用到不同后端（公网云平台/内网云平台/第三方工具等）。
 	// 当前支持：cloud_public（默认）、cloud_intranet；image_compare 等后续扩展。
 	Platform string `json:"platform" binding:"required"`
-	// QuestionType 业务分类，当前仅实现 1=项目
+	// QuestionType 业务分类，当前仅实现 1=项目 2=任务 3=项目文章
 	QuestionType int `json:"question_type" binding:"required"`
 }
 

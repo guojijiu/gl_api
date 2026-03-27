@@ -65,8 +65,9 @@ func (p *Processor) handleImageComparePlatform(d *aiRobotDeps) {
 
 func (p *Processor) cloudPublicBusinessRegistry() map[int]aiBusinessHandler {
 	return map[int]aiBusinessHandler{
-		Requests.AiQuestionTypeProject: p.handleProjectDomain,
-		Requests.AiQuestionTypeTask:    p.handleTaskDomain,
+		Requests.AiQuestionTypeProject:        p.handleProjectDomain,
+		Requests.AiQuestionTypeTask:           p.handleTaskDomain,
+		Requests.AiQuestionTypeProjectArticle: p.handleProjectArticleDomain,
 	}
 }
 

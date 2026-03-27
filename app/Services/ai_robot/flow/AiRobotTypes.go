@@ -18,9 +18,10 @@ type aiRobotDeps struct {
 	cfg   *Config.AiGatewayConfig
 	svc   *AiGateway.Service
 
-	projectClient  *AiGateway.ProjectClient
-	contractClient *AiGateway.ContractClient
-	taskClient     *AiGateway.TaskClient
+	projectClient        *AiGateway.ProjectClient
+	contractClient       *AiGateway.ContractClient
+	taskClient           *AiGateway.TaskClient
+	projectArticleClient *AiGateway.ProjectArticleClient
 }
 
 type aiDomainHandler func(*aiRobotDeps)
@@ -46,4 +47,11 @@ func (d *aiRobotDeps) task() *AiGateway.TaskClient {
 		d.taskClient = AiGateway.NewTaskClient(d.svc)
 	}
 	return d.taskClient
+}
+
+func (d *aiRobotDeps) projectArticle() *AiGateway.ProjectArticleClient {
+	if d.projectArticleClient == nil {
+		d.projectArticleClient = AiGateway.NewProjectArticleClient(d.svc)
+	}
+	return d.projectArticleClient
 }

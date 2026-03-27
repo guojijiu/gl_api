@@ -51,7 +51,7 @@ func (p *Processor) frontFailed(ctx *gin.Context, showMsg string, err error) {
 }
 
 func (p *Processor) ProcessChat(actx context.Context, ginCtx *gin.Context, req *Requests.AiRobotChatRequest, token string, cfg *Config.AiGatewayConfig) {
-	// 仅初始化基础服务；具体的 project/contract/task client 采用懒初始化。
+	// 仅初始化基础服务；具体的 project/contract/task/project_article client 采用懒初始化。
 	svc := AiGateway.NewService(cfg)
 	deps := &aiRobotDeps{
 		ctx:   actx,

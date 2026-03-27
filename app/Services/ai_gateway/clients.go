@@ -49,3 +49,12 @@ func (c *TaskClient) ModuleDetail(ctx context.Context, platform, token string, i
 func (c *TaskClient) ModuleResultURL(ctx context.Context, platform, token string, id int) ([]byte, int, error) {
 	return c.svc.FetchModuleTaskResultURL(ctx, platform, token, id)
 }
+
+type ProjectArticleClient struct{ svc *Service }
+
+func NewProjectArticleClient(svc *Service) *ProjectArticleClient {
+	return &ProjectArticleClient{svc: svc}
+}
+func (c *ProjectArticleClient) List(ctx context.Context, platform, token string) ([]byte, int, error) {
+	return c.svc.FetchProjectArticle(ctx, platform, token)
+}

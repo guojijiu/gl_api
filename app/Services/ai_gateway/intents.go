@@ -14,6 +14,8 @@ const (
 
 	IntentTaskDownloadResult = "task_download_result"
 	IntentTaskStatus         = "task_status"
+
+	IntentProjectArticleList = "project_article_list"
 )
 
 var ProjectIntentWhitelist = []string{
@@ -29,6 +31,11 @@ var ProjectIntentWhitelist = []string{
 var TaskIntentWhitelist = []string{
 	IntentTaskDownloadResult,
 	IntentTaskStatus,
+	IntentUnsupported,
+}
+
+var ProjectArticleIntentWhitelist = []string{
+	IntentProjectArticleList,
 	IntentUnsupported,
 }
 

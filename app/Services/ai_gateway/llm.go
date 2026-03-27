@@ -87,6 +87,34 @@ func (s *Service) PlanTaskIntent(ctx context.Context, userQuestion string) (*Int
 	}
 }
 
+func (s *Service) PlanProjectArticleIntent(ctx context.Context, userQuestion string) (*IntentPlan, error) {
+	if err := s.validateGatewayForLLM(); err != nil {
+		return nil, err
+	}
+	prompt := fmt.Sprintf(`你是云平台「项目文章」类接口的路由决策器。根据用户问题，只能输出以下 intent 之一：
+- project_article_list：用户想查看项目文章数据
+
+用户问题：%s
+
+只输出一个 JSON 对象，不要 markdown，不要其它文字，格式：
+{"intent":%s,"reason":"不超过80字的中文原因"}`, userQuestion, BuildIntentEnumForPrompt(TaskIntentWhitelist))
+	text, err := s.chatCompletion(ctx, prompt)
+	if err != nil {
+		return nil, err
+	}
+	raw := extractJSONFromLLM(text)
+	var plan IntentPlan
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		return nil, fmt.Errorf("解析意图 JSON 失败: %w, 原文: %s", err, truncate(text, 500))
+	}
+	switch plan.Intent {
+	case IntentProjectArticleList, IntentUnsupported:
+		return &plan, nil
+	default:
+		return &IntentPlan{Intent: IntentUnsupported, Reason: "模型返回未知 intent"}, nil
+	}
+}
+
 func (s *Service) SummarizeWithData(ctx context.Context, userQuestion string, apiJSON []byte) (string, error) {
 	if err := s.validateGatewayForLLM(); err != nil {
 		return "", err

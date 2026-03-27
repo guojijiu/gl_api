@@ -130,6 +130,7 @@ func defaultCapabilityMatrix() map[string]map[int]map[string]struct{} {
 		"cloud_public": {
 			1: {"project_list": {}, "project_expiring": {}, "contract_list": {}, "contract_projects": {}, "download_final_report": {}, "download_original_data": {}, "unsupported": {}},
 			2: {"task_status": {}, "task_download_result": {}, "unsupported": {}},
+			3: {"unsupported": {}, "project_article_list": {}},
 		},
 		"cloud_intranet": {
 			1: {"project_list": {}, "project_expiring": {}, "contract_list": {}, "contract_projects": {}, "download_final_report": {}, "download_original_data": {}, "unsupported": {}},
@@ -329,4 +330,9 @@ func GetAiGatewayConfig() *AiGatewayConfig {
 		return nil
 	}
 	return &globalConfig.AiGateway
+}
+
+// ProjectArticleListURL 项目文章列表接口（front.php: project_article/list）。
+func (c *AiGatewayConfig) ProjectArticleListURL(platform string) string {
+	return c.CloudAPIBaseByPlatform(platform) + "/api/front/project_article/list"
 }
