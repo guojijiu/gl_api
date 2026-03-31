@@ -2,8 +2,6 @@ package Config
 
 import (
 	"encoding/json"
-	"fmt"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,7 +9,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-// AiGatewayConfig AI 网关：连接「阿里云百炼大模型」与「自有 Laravel 云平台」。
+// AiGatewayConfig AI 网关：大模型连接信息、云平台站点根地址、以及行为/能力矩阵。
+// Laravel 各接口 path 与完整 URL 拼装见 cloud_public/cloudapi。
 //
 // 说明（给不熟悉 Go 的同事）：
 //   - 本结构体里的字段会通过 viper 从环境变量读入（见 BindEnvs）。
@@ -231,108 +230,10 @@ func (c *AiGatewayConfig) CloudAPIBaseByPlatform(platform string) string {
 	}
 }
 
-// ProjectGetUserAllProjectURL Laravel 路由：routes/front.php 中 jwt 组内 project/get_user_all_project，
-// 全局前缀一般为 api/front（以你 RouteServiceProvider 为准）。
-func (c *AiGatewayConfig) ProjectGetUserAllProjectURL(platform string) string {
-	return c.CloudAPIBaseByPlatform(platform) + "/api/front/project/get_user_all_project"
-}
-
-// ProjectGetZipURL 结题报告下载链接接口（front.php: project/zip_url）。
-// 需要 query 参数：id（项目ID）。
-func (c *AiGatewayConfig) ProjectGetZipURL(platform string, projectID int) string {
-	return c.CloudAPIBaseByPlatform(platform) + "/api/front/project/zip_url?id=" + fmt.Sprintf("%d", projectID)
-}
-
-// ProjectGetOriginalDataURL 原始数据下载链接接口（front.php: project/original_data_url）。
-// 需要 query 参数：id（原始数据ID）+ access_code（授权码）。
-func (c *AiGatewayConfig) ProjectGetOriginalDataURL(platform string, dataID int, accessCode string) string {
-	return c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/project/original_data_url?id=" + fmt.Sprintf("%d", dataID) +
-		"&access_code=" + url.QueryEscape(accessCode)
-}
-
-// ContractListOfProjectURL 合同列表接口（front.php: contract/list_of_project）。
-// 说明：该接口支持 page/size，可附带 contract_number 进行筛选。
-func (c *AiGatewayConfig) ContractListOfProjectURL(platform string, page int, size int, contractNumber string) string {
-	base := c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/contract/list_of_project?page=" + fmt.Sprintf("%d", page) +
-		"&size=" + fmt.Sprintf("%d", size)
-	if strings.TrimSpace(contractNumber) != "" {
-		base += "&contract_number=" + url.QueryEscape(contractNumber)
-	}
-	return base
-}
-
-// ProjectListByContractURL 项目列表接口（front.php: project/list）。
-func (c *AiGatewayConfig) ProjectListByContractURL(platform string, contractID int, page int, size int) string {
-	return c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/project/list?contract_id=" + fmt.Sprintf("%d", contractID) +
-		"&page=" + fmt.Sprintf("%d", page) +
-		"&size=" + fmt.Sprintf("%d", size)
-}
-
-// TaskListURL 任务列表接口（front.php: task/list），支持按 uuid 筛选。
-func (c *AiGatewayConfig) TaskListURL(platform string, page int, size int, uuid string) string {
-	base := c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/task/list?page=" + fmt.Sprintf("%d", page) +
-		"&size=" + fmt.Sprintf("%d", size)
-	if strings.TrimSpace(uuid) != "" {
-		base += "&uuid=" + url.QueryEscape(uuid)
-	}
-	return base
-}
-
-// TaskStatusByUUIDsURL 获取指定 uuid 集合的状态（front.php: task/status_by_uuids）。
-// uuids 以英文逗号拼接。
-func (c *AiGatewayConfig) TaskStatusByUUIDsURL(platform string, uuids string) string {
-	return c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/task/status_by_uuids?uuids=" + url.QueryEscape(uuids)
-}
-
-// TaskGetResultURL 获取任务结果详情（front.php: task/result?id=...），失败原因在返回内容里。
-func (c *AiGatewayConfig) TaskGetResultURL(platform string, taskID int) string {
-	return c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/task/result?id=" + fmt.Sprintf("%d", taskID)
-}
-
-// TaskDownloadResultURL 下载任务结果（front.php: task/download_result），POST body: {"id": <task_id>}
-func (c *AiGatewayConfig) TaskDownloadResultURL(platform string) string {
-	return c.CloudAPIBaseByPlatform(platform) + "/api/front/task/download_result"
-}
-
-// TaskListOfWorkflowURL 流程任务列表（front.php: task/list_of_workflow）。
-func (c *AiGatewayConfig) TaskListOfWorkflowURL(platform string, page int, size int, uuid string) string {
-	base := c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/task/list_of_workflow?page=" + fmt.Sprintf("%d", page) +
-		"&size=" + fmt.Sprintf("%d", size)
-	if strings.TrimSpace(uuid) != "" {
-		base += "&uuid=" + url.QueryEscape(uuid)
-	}
-	return base
-}
-
-// TaskDetailOfModuleToolURL 模块化任务详情（front.php: task/detail_of_module_tool?id=...）。
-func (c *AiGatewayConfig) TaskDetailOfModuleToolURL(platform string, id int) string {
-	return c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/task/detail_of_module_tool?id=" + fmt.Sprintf("%d", id)
-}
-
-// TaskPdfURLOfModuleToolURL 模块化任务结果链接（front.php: task/pdf_url_of_module_tool）。
-// type=2 表示 source_type=task。
-func (c *AiGatewayConfig) TaskPdfURLOfModuleToolURL(platform string, taskID int) string {
-	return c.CloudAPIBaseByPlatform(platform) +
-		"/api/front/task/pdf_url_of_module_tool?type=2&source_id=" + fmt.Sprintf("%d", taskID)
-}
-
 // GetAiGatewayConfig 从全局 Config 取 AI 网关配置指针（main 里 LoadConfig 之后才有值）。
 func GetAiGatewayConfig() *AiGatewayConfig {
 	if globalConfig == nil {
 		return nil
 	}
 	return &globalConfig.AiGateway
-}
-
-// ProjectArticleListURL 项目文章列表接口（front.php: project_article/list）。
-func (c *AiGatewayConfig) ProjectArticleListURL(platform string) string {
-	return c.CloudAPIBaseByPlatform(platform) + "/api/front/project_article/list"
 }

@@ -1,85 +1,57 @@
 package flow
 
-import "cloud-platform-api/app/Http/Requests"
-
-type aiBusinessHandler func(*aiRobotDeps)
+import (
+	"cloud-platform-api/app/Http/Requests"
+	"cloud-platform-api/app/Services/ai_robot/internal/deps"
+	cloudintranet "cloud-platform-api/app/Services/ai_robot/platform/cloud_intranet"
+	cloudpublic "cloud-platform-api/app/Services/ai_robot/platform/cloud_public"
+	imagecompare "cloud-platform-api/app/Services/ai_robot/platform/image_compare"
+)
 
 // dispatchByRegistry 为统一分发总入口：
-// 1) 能力校验（平台 + question_type）；
-// 2) 平台分流（公网/内网/图片）；
-// 3) 平台内业务分流（project/task）。
-func (p *Processor) dispatchByRegistry(d *aiRobotDeps) {
-	if !Requests.IsSupportedPlatform(d.req.Platform) {
-		p.frontFailed(d.gin, "不支持的 platform", nil)
+// 1) 能力校验（平台 + question_type），平台标识以 Backend 为准（与 NewForPlatform 注入一致）；
+// 2) 平台分流：仅转发到 platform/<平台> 包；
+// 3) 各平台包内再按 question_type / 领域处理。
+func (p *Processor) dispatchByRegistry(d *deps.Deps) {
+	pid := d.PlatformID()
+	if !Requests.IsSupportedPlatform(pid) {
+		p.frontFailed(d.Gin, "不支持的 platform", nil)
 		return
 	}
-	if !Requests.IsSupportedQuestionType(d.req.Platform, d.req.QuestionType) {
-		p.frontFailed(d.gin, "当前平台下不支持的提问类型", nil)
+	if !Requests.IsSupportedQuestionType(pid, d.Req.QuestionType) {
+		p.frontFailed(d.Gin, "当前平台下不支持的提问类型", nil)
 		return
 	}
 
-	platformHandler := p.platformRegistry()[d.req.Platform]
-	if platformHandler == nil {
-		p.frontFailed(d.gin, "不支持的 platform", nil)
+	if !p.dispatchPlatform(pid, d) {
+		p.frontFailed(d.Gin, "不支持的 platform", nil)
 		return
 	}
-	platformHandler(d)
 }
 
-func (p *Processor) platformRegistry() map[string]aiDomainHandler {
-	return map[string]aiDomainHandler{
-		Requests.AiPlatformCloudPublic:   p.handleCloudPublicPlatform,
-		Requests.AiPlatformCloudIntranet: p.handleCloudIntranetPlatform,
-		Requests.AiPlatformImageCompare:  p.handleImageComparePlatform,
+// platformRegistry 与 backends.NewForPlatform、Requests 能力矩阵须一致；新增平台步骤见 internal/backends/registry.go 文件头 checklist。
+func (p *Processor) dispatchPlatform(platformID string, d *deps.Deps) bool {
+	switch platformID {
+	case Requests.AiPlatformCloudPublic:
+		p.handleCloudPublicPlatform(d)
+	case Requests.AiPlatformCloudIntranet:
+		p.handleCloudIntranetPlatform(d)
+	case Requests.AiPlatformImageCompare:
+		p.handleImageComparePlatform(d)
+	default:
+		return false
 	}
+	return true
 }
 
-// 当前公网/内网平台先共用同一套业务处理器。
-// 如果后续两套逻辑完全分离，可在这里替换为不同处理函数。
-func (p *Processor) handleCloudPublicPlatform(d *aiRobotDeps) {
-	businessHandler := p.cloudPublicBusinessRegistry()[d.req.QuestionType]
-	if businessHandler == nil {
-		p.frontFailed(d.gin, "公网云平台下不支持的提问类型", nil)
-		return
-	}
-	businessHandler(d)
+func (p *Processor) handleCloudPublicPlatform(d *deps.Deps) {
+	cloudpublic.DispatchPublic(p, d)
 }
 
-func (p *Processor) handleCloudIntranetPlatform(d *aiRobotDeps) {
-	businessHandler := p.cloudIntranetBusinessRegistry()[d.req.QuestionType]
-	if businessHandler == nil {
-		p.frontFailed(d.gin, "内网云平台下不支持的提问类型", nil)
-		return
-	}
-	businessHandler(d)
+func (p *Processor) handleCloudIntranetPlatform(d *deps.Deps) {
+	cloudintranet.DispatchIntranet(p, d)
 }
 
-func (p *Processor) handleImageComparePlatform(d *aiRobotDeps) {
-	businessHandler := p.imageCompareBusinessRegistry()[d.req.QuestionType]
-	if businessHandler == nil {
-		p.frontFailed(d.gin, "图片对比平台下不支持的提问类型", nil)
-		return
-	}
-	businessHandler(d)
-}
-
-func (p *Processor) cloudPublicBusinessRegistry() map[int]aiBusinessHandler {
-	return map[int]aiBusinessHandler{
-		Requests.AiQuestionTypeProject:        p.handleProjectDomain,
-		Requests.AiQuestionTypeTask:           p.handleTaskDomain,
-		Requests.AiQuestionTypeProjectArticle: p.handleProjectArticleDomain,
-	}
-}
-
-func (p *Processor) cloudIntranetBusinessRegistry() map[int]aiBusinessHandler {
-	return map[int]aiBusinessHandler{
-		Requests.AiQuestionTypeProject: p.handleProjectDomain,
-		Requests.AiQuestionTypeTask:    p.handleTaskDomain,
-	}
-}
-
-func (p *Processor) imageCompareBusinessRegistry() map[int]aiBusinessHandler {
-	return map[int]aiBusinessHandler{
-		Requests.AiQuestionTypeProject: p.handleImageDomain,
-	}
+func (p *Processor) handleImageComparePlatform(d *deps.Deps) {
+	imagecompare.Dispatch(p, d)
 }

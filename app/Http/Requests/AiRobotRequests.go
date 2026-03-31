@@ -3,6 +3,8 @@ package Requests
 import (
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"cloud-platform-api/app/Config"
@@ -52,21 +54,53 @@ var aiPlatformCapabilities = map[string]AiPlatformCapability{
 	},
 }
 
+func normalizePlatform(platform string) string {
+	return strings.TrimSpace(platform)
+}
+
+func supportedPlatformsHint() string {
+	platforms := make([]string, 0, len(aiPlatformCapabilities))
+	for p := range aiPlatformCapabilities {
+		platforms = append(platforms, p)
+	}
+	sort.Strings(platforms)
+	return strings.Join(platforms, "/")
+}
+
+func supportedQuestionTypesHint(platform string) string {
+	capability, ok := aiPlatformCapabilities[normalizePlatform(platform)]
+	if !ok {
+		return ""
+	}
+	values := make([]int, 0, len(capability.QuestionTypes))
+	for v := range capability.QuestionTypes {
+		values = append(values, v)
+	}
+	sort.Ints(values)
+	parts := make([]string, 0, len(values))
+	for _, v := range values {
+		parts = append(parts, strconv.Itoa(v))
+	}
+	return strings.Join(parts, ",")
+}
+
 func IsSupportedPlatform(platform string) bool {
+	platform = normalizePlatform(platform)
 	cfg := Config.GetAiGatewayConfig()
 	if cfg != nil {
 		return cfg.IsPlatformSupported(platform)
 	}
-	_, ok := aiPlatformCapabilities[strings.TrimSpace(platform)]
+	_, ok := aiPlatformCapabilities[platform]
 	return ok
 }
 
 func IsSupportedQuestionType(platform string, questionType int) bool {
+	platform = normalizePlatform(platform)
 	cfg := Config.GetAiGatewayConfig()
 	if cfg != nil {
 		return cfg.IsQuestionTypeAllowed(platform, questionType)
 	}
-	capability, ok := aiPlatformCapabilities[strings.TrimSpace(platform)]
+	capability, ok := aiPlatformCapabilities[platform]
 	if !ok {
 		return false
 	}
@@ -96,14 +130,18 @@ func (r *AiRobotChatRequest) Validate() error {
 	if q == "" {
 		return errors.New("question 不能为空")
 	}
-	p := strings.TrimSpace(r.Platform)
+	p := normalizePlatform(r.Platform)
 	if p == "" {
 		return errors.New("platform 不能为空")
 	}
 	if !IsSupportedPlatform(p) {
-		return errors.New("platform 不支持（可选：cloud_public/cloud_intranet/image_compare）")
+		return fmt.Errorf("platform 不支持（可选：%s）", supportedPlatformsHint())
 	}
 	if !IsSupportedQuestionType(p, r.QuestionType) {
+		hint := supportedQuestionTypesHint(p)
+		if hint != "" {
+			return fmt.Errorf("%s 暂不支持 question_type=%d（可选：%s）", p, r.QuestionType, hint)
+		}
 		return fmt.Errorf("%s 暂不支持 question_type=%d", p, r.QuestionType)
 	}
 

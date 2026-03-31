@@ -17,7 +17,7 @@ type AiRobotController struct {
 }
 
 // NewAiRobotController 仅负责创建控制器实例。
-// 业务编排（平台分流/意图分流/云平台调用）都在 Services/ai_robot/flow。
+// 入口在 Services/ai_robot/flow；各平台业务在 Services/ai_robot/platform/<平台>/。
 func NewAiRobotController() *AiRobotController {
 	return &AiRobotController{}
 }
@@ -80,7 +80,15 @@ func (c *AiRobotController) Chat(ctx *gin.Context) {
 	actx := ctx.Request.Context()
 	if cfg.LLMTimeoutSec > 0 {
 		var cancel context.CancelFunc
-		actx, cancel = context.WithTimeout(ctx.Request.Context(), time.Duration(cfg.LLMTimeoutSec)*time.Second)
+		// ai_robot 单次请求内通常包含多次云平台 HTTP 调用 + 1 次 LLM；
+		// 若仅用 LLMTimeoutSec 作为“请求总时长”，在多 uuid/多分支场景下容易提前超时。
+		// 这里给总时长留出缓冲，但仍以 LLMTimeoutSec 为基准控制上限。
+		totalTimeoutSec := cfg.LLMTimeoutSec * 3
+		if totalTimeoutSec < cfg.LLMTimeoutSec {
+			// 防止整型溢出（理论上不会发生，但保持健壮性）
+			totalTimeoutSec = cfg.LLMTimeoutSec
+		}
+		actx, cancel = context.WithTimeout(ctx.Request.Context(), time.Duration(totalTimeoutSec)*time.Second)
 		defer cancel()
 	}
 	// 第3步：进入服务层编排（控制器不承载业务细节）
