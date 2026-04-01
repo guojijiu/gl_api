@@ -3,15 +3,28 @@ package client
 import (
 	"context"
 
+	"cloud-platform-api/app/Services/ai_robot/internal/filters"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_intranet/cloudapi"
 )
 
-func (a *API) FetchTaskListByUUID(ctx context.Context, platform string, userToken string, uuid string) ([]byte, int, error) {
+func (a *API) FetchTaskListByUUID(ctx context.Context, platform string, userToken string, opts filters.TaskFilters) ([]byte, int, error) {
 	if err := a.RequireCloudAPIBase(platform); err != nil {
 		return nil, 0, err
 	}
 	base := a.cfg.CloudAPIBaseByPlatform(platform)
-	return a.CallCloudPlatformGET(ctx, cloudapi.TaskListURL(base, 1, 1000, uuid), userToken)
+	return a.CallCloudPlatformGET(ctx, cloudapi.TaskListURL(base, cloudapi.TaskListQuery{
+		Page:           1,
+		Size:           1000,
+		ProjectNumber:  opts.ProjectNumber,
+		ProjectName:    opts.ProjectName,
+		UUID:           opts.UUID,
+		Name:           opts.Name,
+		ToolName:       opts.ToolName,
+		StatusValue:    opts.StatusValue,
+		WorkflowNameCN: opts.WorkflowNameCN,
+		CreatedAtStart: opts.CreatedAtStart,
+		CreatedAtEnd:   opts.CreatedAtEnd,
+	}), userToken)
 }
 
 func (a *API) FetchTaskStatusByUUIDs(ctx context.Context, platform string, userToken string, uuidsCSV string) ([]byte, int, error) {
@@ -38,12 +51,24 @@ func (a *API) DownloadTaskResult(ctx context.Context, platform string, userToken
 	return a.CallCloudPlatformPOSTJSON(ctx, cloudapi.TaskDownloadResultURL(base), userToken, map[string]interface{}{"id": taskID})
 }
 
-func (a *API) FetchWorkflowTaskListByUUID(ctx context.Context, platform string, userToken string, uuid string) ([]byte, int, error) {
+func (a *API) FetchWorkflowTaskListByUUID(ctx context.Context, platform string, userToken string, opts filters.TaskFilters) ([]byte, int, error) {
 	if err := a.RequireCloudAPIBase(platform); err != nil {
 		return nil, 0, err
 	}
 	base := a.cfg.CloudAPIBaseByPlatform(platform)
-	return a.CallCloudPlatformGET(ctx, cloudapi.TaskListOfWorkflowURL(base, 1, 1000, uuid), userToken)
+	return a.CallCloudPlatformGET(ctx, cloudapi.TaskListOfWorkflowURL(base, cloudapi.TaskListQuery{
+		Page:           1,
+		Size:           1000,
+		ProjectNumber:  opts.ProjectNumber,
+		ProjectName:    opts.ProjectName,
+		UUID:           opts.UUID,
+		Name:           opts.Name,
+		ToolName:       opts.ToolName,
+		StatusValue:    opts.StatusValue,
+		WorkflowNameCN: opts.WorkflowNameCN,
+		CreatedAtStart: opts.CreatedAtStart,
+		CreatedAtEnd:   opts.CreatedAtEnd,
+	}), userToken)
 }
 
 func (a *API) FetchModuleTaskDetail(ctx context.Context, platform string, userToken string, id int) ([]byte, int, error) {

@@ -4,22 +4,24 @@ import (
 	intranetclient "cloud-platform-api/app/Services/ai_robot/platform/cloud_intranet/client"
 	cloudclient "cloud-platform-api/app/Services/ai_robot/platform/cloud_public/client"
 	"context"
+
+	"cloud-platform-api/app/Services/ai_robot/internal/filters"
 )
 
 type ProjectClient interface {
-	List(context.Context, string, string) ([]byte, int, error)
-	ListByContract(context.Context, string, string, int) ([]byte, int, error)
+	List(context.Context, string, string, filters.ProjectFilters) ([]byte, int, error)
+	ListByContract(context.Context, string, string, int, filters.ProjectFilters) ([]byte, int, error)
 	ZipURL(context.Context, string, string, int) ([]byte, int, error)
 	OriginalDataURL(context.Context, string, string, int, string) ([]byte, int, error)
 }
 
 type ContractClient interface {
-	List(context.Context, string, string, string) ([]byte, int, error)
+	List(context.Context, string, string, filters.ContractFilters) ([]byte, int, error)
 }
 
 type TaskClient interface {
-	ListToolByUUID(context.Context, string, string, string) ([]byte, int, error)
-	ListWorkflowByUUID(context.Context, string, string, string) ([]byte, int, error)
+	ListToolByUUID(context.Context, string, string, filters.TaskFilters) ([]byte, int, error)
+	ListWorkflowByUUID(context.Context, string, string, filters.TaskFilters) ([]byte, int, error)
 	StatusByUUIDs(context.Context, string, string, string) ([]byte, int, error)
 	Result(context.Context, string, string, int) ([]byte, int, error)
 	DownloadResult(context.Context, string, string, int) ([]byte, int, error)
@@ -28,7 +30,7 @@ type TaskClient interface {
 }
 
 type ProjectArticleClient interface {
-	List(context.Context, string, string) ([]byte, int, error)
+	List(context.Context, string, string, filters.ProjectArticleFilters) ([]byte, int, error)
 }
 
 // CloudGateway 绑定 cloud_public/client.API 与 platform；URL 由 cfg.CloudAPIBaseByPlatform(platform) 决定。

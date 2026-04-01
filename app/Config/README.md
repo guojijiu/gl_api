@@ -219,6 +219,78 @@ app/Config/
 - `SetDefaults()`: 设置默认值
 - `BindEnvs()`: 绑定环境变量
 - `Validate()`: 验证配置
+
+### 6. AI 网关与 ai_robot 上下文配置 (ai_gateway.go)
+
+**AI 网关基础环境变量：**
+- `CLOUD_PLATFORM_BASE_URL`
+- `CLOUD_PLATFORM_INTRANET_BASE_URL`
+- `AI_GATEWAY_LLM_BASE_URL`
+- `AI_GATEWAY_LLM_API_KEY`
+- `AI_GATEWAY_LLM_MODEL`
+- `AI_GATEWAY_LLM_TIMEOUT_SEC`
+- `AI_GATEWAY_EXPIRING_DAYS`
+- `AI_GATEWAY_STRICT_MODE`
+
+**公共 MongoDB 环境变量：**
+- `MONGODB_URI`
+- `MONGODB_HOST`
+- `MONGODB_PORT`
+- `MONGODB_DATABASE`
+- `MONGODB_USERNAME`
+- `MONGODB_PASSWORD`
+- `MONGODB_AUTH_SOURCE`
+- `MONGODB_TIMEOUT_SEC`
+
+**ai_robot 会话存储环境变量：**
+- `AI_ROBOT_CONVERSATION_STORE_DRIVER`
+- `AI_ROBOT_CONVERSATION_MONGO_URI`
+- `AI_ROBOT_CONVERSATION_MONGO_HOST`
+- `AI_ROBOT_CONVERSATION_MONGO_PORT`
+- `AI_ROBOT_CONVERSATION_MONGO_DATABASE`
+- `AI_ROBOT_CONVERSATION_MONGO_COLLECTION`
+- `AI_ROBOT_CONVERSATION_MONGO_USERNAME`
+- `AI_ROBOT_CONVERSATION_MONGO_PASSWORD`
+- `AI_ROBOT_CONVERSATION_MONGO_AUTH_SOURCE`
+- `AI_ROBOT_CONVERSATION_MONGO_TIMEOUT_SEC`
+- `AI_ROBOT_CONVERSATION_TTL_HOURS`
+
+**ai_robot 上下文继承调优环境变量：**
+- `AI_ROBOT_CONVERSATION_AUTO_FILL_MAX_AGE_MINUTES`
+- `AI_ROBOT_CONVERSATION_AUTO_FILL_MAX_TURNS`
+- `AI_ROBOT_CONVERSATION_SUMMARY_MAX_TURNS`
+
+**推荐说明：**
+- `AI_ROBOT_CONVERSATION_AUTO_FILL_MAX_AGE_MINUTES`：控制自动补参的时间窗口，默认 `10`
+- `AI_ROBOT_CONVERSATION_AUTO_FILL_MAX_TURNS`：控制自动补参参考的最近连续轮次，默认 `3`
+- `AI_ROBOT_CONVERSATION_SUMMARY_MAX_TURNS`：控制提供给模型的上下文摘要轮次，默认 `5`
+- `ai_robot` 会优先读取 `AI_ROBOT_CONVERSATION_MONGO_*`；未单独配置时自动回退到公共 `MONGODB_*`
+- 如果你们在 PHP/Laravel 里使用的是 `mongodb_cloud_platform_v2` 这类“连接名”，Go 侧这里仍然要填实际库名到 `MONGODB_DATABASE`
+- `ai_robot` 上下文会按 `user_id + platform + conversation_id` 进行隔离；相同 `conversation_id` 在不同用户之间不会串话
+- `user_id` 按字符串保存和查询，不要求必须是整型，兼容历史或外部系统的字符串用户标识
+- `POST /api/v1/ai_robot/chat`、`GET/DELETE /api/v1/ai_robot/conversation`、`GET/DELETE /api/v1/ai_robot/conversations` 现在都要求登录态
+- 普通用户只能查看/删除自己的会话；管理员可以查看和删除全量会话
+- 当 `enable_context=true` 时，后端必须能拿到当前登录用户，否则不会启用上下文持久化
+- 建议让 `SUMMARY_MAX_TURNS >= AUTO_FILL_MAX_TURNS`
+- 建议生产默认先保持 `10 / 3 / 5`，再按真实对话体验微调
+
+**一个建议配置示例：**
+
+```env
+CLOUD_PLATFORM_BASE_URL=http://local.cloud_platform_api.com
+AI_GATEWAY_LLM_API_KEY=your-llm-api-key
+MONGODB_HOST=121.43.37.234
+MONGODB_PORT=27117
+MONGODB_DATABASE=cloud_platform
+MONGODB_USERNAME=root
+MONGODB_PASSWORD=your-mongodb-password
+MONGODB_AUTH_SOURCE=admin
+AI_ROBOT_CONVERSATION_STORE_DRIVER=mongodb
+AI_ROBOT_CONVERSATION_MONGO_COLLECTION=ai_robot_conversations
+AI_ROBOT_CONVERSATION_AUTO_FILL_MAX_AGE_MINUTES=10
+AI_ROBOT_CONVERSATION_AUTO_FILL_MAX_TURNS=3
+AI_ROBOT_CONVERSATION_SUMMARY_MAX_TURNS=5
+```
 - `GetMaxFileSizeBytes()`: 获取最大文件大小（字节）
 - `IsFileTypeAllowed()`: 检查文件类型是否允许
 - `GetPublicFilePath()`: 获取公共文件路径

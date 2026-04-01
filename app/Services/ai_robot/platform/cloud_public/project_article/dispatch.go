@@ -6,6 +6,7 @@ import (
 	"cloud-platform-api/app/Services/ai_robot/internal/deps"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/client"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/intent"
+	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/parse"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/summary"
 	"cloud-platform-api/app/Services/ai_robot/policy"
 
@@ -25,7 +26,8 @@ func failIfProjectArticleCloudCallFailed(r deps.Responder, d *deps.Deps, errMsg 
 }
 
 func summarizeProjectArticleWithData(r deps.Responder, d *deps.Deps, intentKey string, raw []byte) bool {
-	answer, err := summary.SummarizeWithData(d.Ctx, d.LLM, d.Req.Question, raw)
+	d.RememberIntent(intentKey)
+	answer, err := summary.SummarizeProjectArticleData(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), raw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "生成自然语言回复失败", err)
 		return false
@@ -42,7 +44,7 @@ func summarizeProjectArticleWithData(r deps.Responder, d *deps.Deps, intentKey s
 
 // Dispatch 处理 question_type 为「项目文章」的请求。
 func Dispatch(r deps.Responder, d *deps.Deps) {
-	plan, err := intent.PlanProjectArticleIntent(d.Ctx, d.LLM, d.Req.Question)
+	plan, err := intent.PlanProjectArticleIntent(d.Ctx, d.LLM, d.Question(), d.ContextSummary())
 	if err != nil {
 		r.FrontFailed(d.Gin, "意图解析失败", err)
 		return
@@ -54,7 +56,7 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 	}
 	switch plan.Intent {
 	case intent.IntentUnsupported:
-		answer, e := summary.SummarizeUnsupported(d.Ctx, d.LLM, d.Req.Question, plan.Reason)
+		answer, e := summary.SummarizeUnsupported(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), plan.Reason)
 		if e != nil {
 			r.FrontFailed(d.Gin, "生成回复失败", e)
 			return
@@ -74,7 +76,9 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 }
 
 func handleProjectArticleList(r deps.Responder, d *deps.Deps, intentKey string) {
-	raw, status, err := d.Cloud().ProjectArticle().List(d.Ctx, d.PlatformID(), d.Token)
+	articleFilters := parse.ExtractProjectArticleFiltersFromQuestion(d.Question())
+	d.RememberProjectArticleFilters(articleFilters)
+	raw, status, err := d.Cloud().ProjectArticle().List(d.Ctx, d.PlatformID(), d.Token, articleFilters)
 	if failIfProjectArticleCloudCallFailed(r, d, "请求云平台失败", status, err) {
 		return
 	}

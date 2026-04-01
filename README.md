@@ -75,6 +75,7 @@ curl http://localhost:8080/api/v1/health
 ## 📖 文档
 
 - [API 文档](docs/API_Documentation.md) - 详细的 API 接口文档
+- [AI Robot 指南](docs/AI_ROBOT_GUIDE.md) - ai_robot 能力、上下文会话与接口联调说明
 - [部署指南](docs/Deployment_Guide.md) - 生产环境部署指南
 - [开发指南](docs/Development_Guide.md) - 开发者指南和最佳实践
 

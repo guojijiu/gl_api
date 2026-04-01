@@ -2,6 +2,7 @@ package Config
 
 import (
 	"encoding/json"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -58,6 +59,35 @@ type AiGatewayConfig struct {
 	//   "image_compare":{"1":["unsupported"]}
 	// }
 	CapabilityMatrixJSON string `mapstructure:"capability_matrix_json"`
+
+	// ConversationStoreDriver 对话上下文存储驱动：mongodb / memory。
+	ConversationStoreDriver string `mapstructure:"conversation_store_driver"`
+	// ConversationMongoURI Mongo 连接串；如已提供则优先使用。
+	ConversationMongoURI string `mapstructure:"conversation_mongo_uri"`
+	// ConversationMongoHost Mongo 主机。
+	ConversationMongoHost string `mapstructure:"conversation_mongo_host"`
+	// ConversationMongoPort Mongo 端口。
+	ConversationMongoPort int `mapstructure:"conversation_mongo_port"`
+	// ConversationMongoDatabase Mongo 数据库名。
+	ConversationMongoDatabase string `mapstructure:"conversation_mongo_database"`
+	// ConversationMongoCollection Mongo 集合名。
+	ConversationMongoCollection string `mapstructure:"conversation_mongo_collection"`
+	// ConversationMongoUsername Mongo 用户名。
+	ConversationMongoUsername string `mapstructure:"conversation_mongo_username"`
+	// ConversationMongoPassword Mongo 密码。
+	ConversationMongoPassword string `mapstructure:"conversation_mongo_password"`
+	// ConversationMongoAuthSource Mongo 认证库。
+	ConversationMongoAuthSource string `mapstructure:"conversation_mongo_auth_source"`
+	// ConversationMongoTimeoutSec Mongo 连接超时秒数。
+	ConversationMongoTimeoutSec int `mapstructure:"conversation_mongo_timeout_sec"`
+	// ConversationTTLHours 对话上下文保留时长，单位小时；用于 TTL 清理。
+	ConversationTTLHours int `mapstructure:"conversation_ttl_hours"`
+	// ConversationAutoFillMaxAgeMinutes 自动补参上下文最大有效分钟数；超时后只保留摘要，不自动补参。
+	ConversationAutoFillMaxAgeMinutes int `mapstructure:"conversation_auto_fill_max_age_minutes"`
+	// ConversationAutoFillMaxTurns 自动补参最多参考最近连续几轮；更早轮次只保留给模型参考。
+	ConversationAutoFillMaxTurns int `mapstructure:"conversation_auto_fill_max_turns"`
+	// ConversationSummaryMaxTurns 上下文摘要最多参考最近连续几轮；可大于自动补参窗口。
+	ConversationSummaryMaxTurns int `mapstructure:"conversation_summary_max_turns"`
 }
 
 // SetDefaults 设置 viper 默认值（环境变量未配置时使用）。
@@ -71,6 +101,17 @@ func (c *AiGatewayConfig) SetDefaults() {
 	viper.SetDefault("ai_gateway.expiring_within_days", 30)
 	viper.SetDefault("ai_gateway.strict_mode", false)
 	viper.SetDefault("ai_gateway.capability_matrix_json", "")
+	viper.SetDefault("ai_gateway.conversation_store_driver", "mongodb")
+	viper.SetDefault("ai_gateway.conversation_mongo_host", "127.0.0.1")
+	viper.SetDefault("ai_gateway.conversation_mongo_port", 27017)
+	viper.SetDefault("ai_gateway.conversation_mongo_database", "cloud_platform_v2")
+	viper.SetDefault("ai_gateway.conversation_mongo_collection", "ai_robot_conversations")
+	viper.SetDefault("ai_gateway.conversation_mongo_auth_source", "admin")
+	viper.SetDefault("ai_gateway.conversation_mongo_timeout_sec", 5)
+	viper.SetDefault("ai_gateway.conversation_ttl_hours", 24*30)
+	viper.SetDefault("ai_gateway.conversation_auto_fill_max_age_minutes", 10)
+	viper.SetDefault("ai_gateway.conversation_auto_fill_max_turns", 3)
+	viper.SetDefault("ai_gateway.conversation_summary_max_turns", 5)
 }
 
 // BindEnvs 把环境变量绑定到 viper 的键上；LoadConfig() 时会 Unmarshal 进 AiGatewayConfig。
@@ -90,6 +131,20 @@ func (c *AiGatewayConfig) BindEnvs() {
 	viper.BindEnv("ai_gateway.expiring_within_days", "AI_GATEWAY_EXPIRING_DAYS")
 	viper.BindEnv("ai_gateway.strict_mode", "AI_GATEWAY_STRICT_MODE")
 	viper.BindEnv("ai_gateway.capability_matrix_json", "AI_GATEWAY_CAPABILITY_MATRIX_JSON")
+	viper.BindEnv("ai_gateway.conversation_store_driver", "AI_ROBOT_CONVERSATION_STORE_DRIVER")
+	viper.BindEnv("ai_gateway.conversation_mongo_uri", "AI_ROBOT_CONVERSATION_MONGO_URI")
+	viper.BindEnv("ai_gateway.conversation_mongo_host", "AI_ROBOT_CONVERSATION_MONGO_HOST", "MONGODB_HOST")
+	viper.BindEnv("ai_gateway.conversation_mongo_port", "AI_ROBOT_CONVERSATION_MONGO_PORT", "MONGODB_PORT")
+	viper.BindEnv("ai_gateway.conversation_mongo_database", "AI_ROBOT_CONVERSATION_MONGO_DATABASE", "MONGODB_DATABASE")
+	viper.BindEnv("ai_gateway.conversation_mongo_collection", "AI_ROBOT_CONVERSATION_MONGO_COLLECTION")
+	viper.BindEnv("ai_gateway.conversation_mongo_username", "AI_ROBOT_CONVERSATION_MONGO_USERNAME", "MONGODB_USERNAME")
+	viper.BindEnv("ai_gateway.conversation_mongo_password", "AI_ROBOT_CONVERSATION_MONGO_PASSWORD", "MONGODB_PASSWORD")
+	viper.BindEnv("ai_gateway.conversation_mongo_auth_source", "AI_ROBOT_CONVERSATION_MONGO_AUTH_SOURCE", "MONGODB_AUTH_SOURCE")
+	viper.BindEnv("ai_gateway.conversation_mongo_timeout_sec", "AI_ROBOT_CONVERSATION_MONGO_TIMEOUT_SEC", "MONGODB_TIMEOUT_SEC")
+	viper.BindEnv("ai_gateway.conversation_ttl_hours", "AI_ROBOT_CONVERSATION_TTL_HOURS")
+	viper.BindEnv("ai_gateway.conversation_auto_fill_max_age_minutes", "AI_ROBOT_CONVERSATION_AUTO_FILL_MAX_AGE_MINUTES")
+	viper.BindEnv("ai_gateway.conversation_auto_fill_max_turns", "AI_ROBOT_CONVERSATION_AUTO_FILL_MAX_TURNS")
+	viper.BindEnv("ai_gateway.conversation_summary_max_turns", "AI_ROBOT_CONVERSATION_SUMMARY_MAX_TURNS")
 }
 
 func (c *AiGatewayConfig) parsedCapabilityMatrix() map[string]map[int]map[string]struct{} {
@@ -205,6 +260,87 @@ func (c *AiGatewayConfig) CapabilityMatrixDebugView() map[string]interface{} {
 		matrixView[platform] = typeView
 	}
 	return view
+}
+
+func (c *AiGatewayConfig) EffectiveConversationMongoConfig(shared *MongoDBConfig) MongoDBConfig {
+	effective := MongoDBConfig{
+		Host:       "127.0.0.1",
+		Port:       27017,
+		Database:   "cloud_platform_v2",
+		AuthSource: "admin",
+		TimeoutSec: 5,
+	}
+	if shared != nil {
+		effective = *shared
+	}
+	if raw := strings.TrimSpace(c.ConversationMongoURI); raw != "" {
+		effective.URI = raw
+	}
+	if host := strings.TrimSpace(c.ConversationMongoHost); host != "" {
+		effective.Host = host
+	}
+	if c.ConversationMongoPort > 0 {
+		effective.Port = c.ConversationMongoPort
+	}
+	if database := strings.TrimSpace(c.ConversationMongoDatabase); database != "" {
+		effective.Database = database
+	}
+	if username := strings.TrimSpace(c.ConversationMongoUsername); username != "" {
+		effective.Username = username
+	}
+	if c.ConversationMongoPassword != "" {
+		effective.Password = c.ConversationMongoPassword
+	}
+	if authSource := strings.TrimSpace(c.ConversationMongoAuthSource); authSource != "" {
+		effective.AuthSource = authSource
+	}
+	if c.ConversationMongoTimeoutSec > 0 {
+		effective.TimeoutSec = c.ConversationMongoTimeoutSec
+	}
+	return effective
+}
+
+func (c *AiGatewayConfig) ConversationMongoConnString() string {
+	effective := c.EffectiveConversationMongoConfig(GetMongoDBConfig())
+	if raw := strings.TrimSpace(effective.URI); raw != "" {
+		return raw
+	}
+
+	host := strings.TrimSpace(effective.Host)
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := effective.Port
+	if port <= 0 {
+		port = 27017
+	}
+	database := strings.TrimSpace(effective.Database)
+	if database == "" {
+		database = "cloud_platform_v2"
+	}
+	authSource := strings.TrimSpace(effective.AuthSource)
+	if authSource == "" {
+		authSource = "admin"
+	}
+
+	credentials := ""
+	if user := strings.TrimSpace(effective.Username); user != "" {
+		credentials = url.QueryEscape(user)
+		if pwd := effective.Password; pwd != "" {
+			credentials += ":" + url.QueryEscape(pwd)
+		}
+		credentials += "@"
+	}
+
+	params := url.Values{}
+	if credentials != "" && authSource != "" {
+		params.Set("authSource", authSource)
+	}
+	query := params.Encode()
+	if query != "" {
+		query = "?" + query
+	}
+	return "mongodb://" + credentials + host + ":" + strconv.Itoa(port) + "/" + database + query
 }
 
 // CloudFrontAPIBase 返回去掉右侧斜杠的云平台根 URL，避免拼接时出现 //。

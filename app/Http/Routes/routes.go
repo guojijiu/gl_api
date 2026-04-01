@@ -248,11 +248,19 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 	// AI 机器人（平台 -> 业务类型 -> 意图）：
 	// - POST /chat：主问答入口（当前支持 project=1、task=2）
 	// - GET  /capabilities：查看当前生效能力矩阵（便于排查配置）
+	// - GET  /conversations：分页查看会话列表
+	// - DELETE /conversations：按条件批量删除会话
+	// - GET  /conversation：查看单条上下文会话
+	// - DELETE /conversation：删除单条上下文会话
 	aiRobotController := Controllers.NewAiRobotController()
 	aiRobotGroup := v1.Group("/ai_robot")
 	{
 		aiRobotGroup.POST("/chat", aiRobotController.Chat)
 		aiRobotGroup.GET("/capabilities", aiRobotController.Capabilities)
+		aiRobotGroup.GET("/conversations", aiRobotController.ListConversations)
+		aiRobotGroup.DELETE("/conversations", aiRobotController.DeleteConversations)
+		aiRobotGroup.GET("/conversation", aiRobotController.GetConversation)
+		aiRobotGroup.DELETE("/conversation", aiRobotController.DeleteConversation)
 	}
 
 	// 管理员路由

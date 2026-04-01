@@ -9,7 +9,10 @@ import (
 	"cloud-platform-api/app/Services/ai_robot/internal/llmutil"
 )
 
-func PlanProjectIntent(ctx context.Context, c llm.ChatCompletionClient, userQuestion string) (*IntentPlan, error) {
+func PlanProjectIntent(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, contextSummary string) (*IntentPlan, error) {
+	if plan := heuristicProjectIntent(userQuestion); plan != nil {
+		return plan, nil
+	}
 	prompt := fmt.Sprintf(`你是云平台「项目」类接口的路由决策器。根据用户问题，只能输出以下 intent 之一：
 - project_list：用户想查看自己有哪些项目、项目列表、我的项目等
 - project_expiring：用户关心即将到期、快过期、什么时候到期、剩余期限等
@@ -21,8 +24,11 @@ func PlanProjectIntent(ctx context.Context, c llm.ChatCompletionClient, userQues
 
 用户问题：%s
 
+会话上下文摘要（可能为空；仅在有帮助时参考，不要被误导）：
+%s
+
 只输出一个 JSON 对象，不要 markdown，不要其它文字，格式：
-{"intent":%s,"reason":"不超过80字的中文原因"}`, userQuestion, BuildIntentEnumForPrompt(ProjectIntentWhitelist))
+{"intent":%s,"reason":"不超过80字的中文原因"}`, userQuestion, contextSummary, BuildIntentEnumForPrompt(ProjectIntentWhitelist))
 	text, err := c.ChatCompletion(ctx, prompt)
 	if err != nil {
 		return nil, err
@@ -40,7 +46,10 @@ func PlanProjectIntent(ctx context.Context, c llm.ChatCompletionClient, userQues
 	}
 }
 
-func PlanTaskIntent(ctx context.Context, c llm.ChatCompletionClient, userQuestion string) (*IntentPlan, error) {
+func PlanTaskIntent(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, contextSummary string) (*IntentPlan, error) {
+	if plan := heuristicTaskIntent(userQuestion); plan != nil {
+		return plan, nil
+	}
 	prompt := fmt.Sprintf(`你是云平台「任务」类接口的路由决策器。根据用户问题，只能输出以下 intent 之一：
 - task_download_result：用户要下载某个任务的结果、导出结果、下载zip等（通常会带任务编号/uuid）
 - task_status：用户问任务有没有完成、成功还是失败、失败原因是什么、为什么失败
@@ -48,8 +57,11 @@ func PlanTaskIntent(ctx context.Context, c llm.ChatCompletionClient, userQuestio
 
 用户问题：%s
 
+会话上下文摘要（可能为空；仅在有帮助时参考，不要被误导）：
+%s
+
 只输出一个 JSON 对象，不要 markdown，不要其它文字，格式：
-{"intent":%s,"reason":"不超过80字的中文原因"}`, userQuestion, BuildIntentEnumForPrompt(TaskIntentWhitelist))
+{"intent":%s,"reason":"不超过80字的中文原因"}`, userQuestion, contextSummary, BuildIntentEnumForPrompt(TaskIntentWhitelist))
 	text, err := c.ChatCompletion(ctx, prompt)
 	if err != nil {
 		return nil, err
@@ -67,14 +79,20 @@ func PlanTaskIntent(ctx context.Context, c llm.ChatCompletionClient, userQuestio
 	}
 }
 
-func PlanProjectArticleIntent(ctx context.Context, c llm.ChatCompletionClient, userQuestion string) (*IntentPlan, error) {
+func PlanProjectArticleIntent(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, contextSummary string) (*IntentPlan, error) {
+	if plan := heuristicProjectArticleIntent(userQuestion); plan != nil {
+		return plan, nil
+	}
 	prompt := fmt.Sprintf(`你是云平台「项目文章」类接口的路由决策器。根据用户问题，只能输出以下 intent 之一：
 - project_article_list：用户想查看项目文章数据
 
 用户问题：%s
 
+会话上下文摘要（可能为空；仅在有帮助时参考，不要被误导）：
+%s
+
 只输出一个 JSON 对象，不要 markdown，不要其它文字，格式：
-{"intent":%s,"reason":"不超过80字的中文原因"}`, userQuestion, BuildIntentEnumForPrompt(ProjectArticleIntentWhitelist))
+{"intent":%s,"reason":"不超过80字的中文原因"}`, userQuestion, contextSummary, BuildIntentEnumForPrompt(ProjectArticleIntentWhitelist))
 	text, err := c.ChatCompletion(ctx, prompt)
 	if err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"cloud-platform-api/app/Http/Requests"
 	"cloud-platform-api/app/Services/ai_gateway/llm"
 	"cloud-platform-api/app/Services/ai_robot/internal/backends"
+	"cloud-platform-api/app/Services/ai_robot/internal/conversation"
 	"cloud-platform-api/app/Services/ai_robot/internal/deps"
 	intranetclient "cloud-platform-api/app/Services/ai_robot/platform/cloud_intranet/client"
 	cloudclient "cloud-platform-api/app/Services/ai_robot/platform/cloud_public/client"
@@ -29,6 +30,7 @@ func (p *Processor) respondFrontFormat(ctx *gin.Context, code int, showMsg strin
 	if content == nil {
 		content = gin.H{}
 	}
+	content = enrichAiRobotFlowContent(ctx, content)
 	ctx.JSON(200, gin.H{
 		"code":     code,
 		"showMsg":  showMsg,
@@ -90,14 +92,48 @@ func (p *Processor) ProcessChat(actx context.Context, ginCtx *gin.Context, req *
 		p.frontFailed(ginCtx, "平台后端初始化失败", err)
 		return
 	}
+	store := conversation.DefaultStore()
+	state, err := conversation.LoadState(actx, store, req)
+	if err != nil {
+		p.frontFailed(ginCtx, "上下文初始化失败", err)
+		return
+	}
+	req.ResolvedQuestion = conversation.EnhanceQuestion(req, state)
+
 	d := &deps.Deps{
-		Ctx:     actx,
-		Gin:     ginCtx,
-		Req:     req,
-		Token:   token,
-		Cfg:     cfg,
-		LLM:     llmClient,
-		Backend: b,
+		Ctx:               actx,
+		Gin:               ginCtx,
+		Req:               req,
+		Token:             token,
+		Cfg:               cfg,
+		LLM:               llmClient,
+		Backend:           b,
+		ConversationStore: store,
+		Conversation:      state,
+	}
+	if d.Conversation != nil {
+		d.Conversation.UserID = d.CurrentUserID()
 	}
 	p.dispatchByRegistry(d)
+	_ = conversation.SaveState(actx, store, req, d.Conversation)
+}
+
+func enrichAiRobotFlowContent(ctx *gin.Context, content interface{}) gin.H {
+	base := gin.H{}
+	if existing, ok := content.(gin.H); ok {
+		for k, v := range existing {
+			base[k] = v
+		}
+	} else {
+		base["data"] = content
+	}
+	if ctx != nil {
+		if conversationID := ctx.GetString("ai_robot_conversation_id"); conversationID != "" {
+			base["conversation_id"] = conversationID
+		}
+		if messageID := ctx.GetString("ai_robot_message_id"); messageID != "" {
+			base["message_id"] = messageID
+		}
+	}
+	return base
 }

@@ -2,6 +2,7 @@ package summary
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"cloud-platform-api/app/Services/ai_gateway/llm"
@@ -19,10 +20,34 @@ func truncateAPIJSONForPrompt(s string) string {
 	return s[:maxAPIJSONForPrompt] + "\n...[truncated]..."
 }
 
-func SummarizeWithData(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, apiJSON []byte) (string, error) {
-	prompt := fmt.Sprintf(`你是云平台客服助手。请严格按以下规则回复，且只输出最终给客户的答复，不要任何额外信息。
+func SummarizeWithData(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, contextSummary string, apiJSON []byte) (string, error) {
+	compressedJSON := compressAPIJSONForPrompt(apiJSON)
+	prompt := buildSummaryPrompt(userQuestion, contextSummary, compressedJSON)
+	return c.ChatCompletion(ctx, prompt)
+}
+
+func SummarizeProjectData(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, contextSummary string, apiJSON []byte) (string, error) {
+	compressedJSON := compressProjectJSONForPrompt(apiJSON)
+	return c.ChatCompletion(ctx, buildSummaryPrompt(userQuestion, contextSummary, compressedJSON))
+}
+
+func SummarizeTaskData(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, contextSummary string, apiJSON []byte) (string, error) {
+	compressedJSON := compressTaskJSONForPrompt(apiJSON)
+	return c.ChatCompletion(ctx, buildSummaryPrompt(userQuestion, contextSummary, compressedJSON))
+}
+
+func SummarizeProjectArticleData(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, contextSummary string, apiJSON []byte) (string, error) {
+	compressedJSON := compressProjectArticleJSONForPrompt(apiJSON)
+	return c.ChatCompletion(ctx, buildSummaryPrompt(userQuestion, contextSummary, compressedJSON))
+}
+
+func buildSummaryPrompt(userQuestion string, contextSummary string, compressedJSON string) string {
+	return fmt.Sprintf(`你是云平台客服助手。请严格按以下规则回复，且只输出最终给客户的答复，不要任何额外信息。
 
 用户问题：
+%s
+
+会话上下文摘要（可能为空；仅在有帮助时参考，不要编造未确认的上下文）：
 %s
 
 云平台接口返回 JSON（可能包含 code、showMsg、content 等字段）：
@@ -47,14 +72,14 @@ func SummarizeWithData(ctx context.Context, c llm.ChatCompletionClient, userQues
 - 不要补充建议
 - 不要编造任何接口中不存在的信息
 - 不要出现“根据接口返回/接口显示/code/showMsg/系统层面/客户无需关注细节”等描述
-`, userQuestion, truncateAPIJSONForPrompt(string(apiJSON)))
-	return c.ChatCompletion(ctx, prompt)
+`, userQuestion, contextSummary, compressedJSON)
 }
 
-func SummarizeUnsupported(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, reason string) (string, error) {
+func SummarizeUnsupported(ctx context.Context, c llm.ChatCompletionClient, userQuestion string, contextSummary string, reason string) (string, error) {
 	prompt := fmt.Sprintf(`你是云平台客服助手。请严格按以下规则回复，且只输出最终给客户的答复，不要任何额外信息。
 
 用户问题：%s
+会话上下文摘要：%s
 系统判断信息：%s
 
 回复规则（按优先级）：
@@ -77,6 +102,14 @@ func SummarizeUnsupported(ctx context.Context, c llm.ChatCompletionClient, userQ
 - 不要承诺具体时间
 - 不要添加任何额外信息
 - 不要出现“根据接口返回/接口显示/code/showMsg/系统层面/客户无需关注细节”等描述
-`, userQuestion, reason)
+`, userQuestion, contextSummary, reason)
 	return c.ChatCompletion(ctx, prompt)
+}
+
+func mustJSON(v interface{}, fallback []byte) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return compressAPIJSONForPrompt(fallback)
+	}
+	return truncateAPIJSONForPrompt(string(b))
 }

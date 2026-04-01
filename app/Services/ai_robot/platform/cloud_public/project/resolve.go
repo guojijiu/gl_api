@@ -10,6 +10,7 @@ import (
 	"cloud-platform-api/app/Services/ai_gateway/llm"
 	"cloud-platform-api/app/Services/ai_robot/internal/llmutil"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/client"
+	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/parse"
 )
 
 func ResolveProjectIDsFromProjects(ctx context.Context, c llm.ChatCompletionClient, cfg *Config.AiGatewayConfig, userQuestion string, projectsJSON []byte) ([]int, string, error) {
@@ -31,10 +32,10 @@ func ResolveProjectIDsFromProjects(ctx context.Context, c llm.ChatCompletionClie
 			}
 		}
 		if cfg != nil && cfg.StrictMode {
-			return nil, "", errors.New("严格模式已开启：未按项目编号匹配到数据，请确认项目编号后重试")
+			return nil, "", errors.New(parse.ProjectMatchGuidanceForQuestion(userQuestion))
 		}
 	} else if cfg != nil && cfg.StrictMode {
-		return nil, "", errors.New("严格模式已开启：请在问题中明确提供项目编号")
+		return nil, "", errors.New(parse.ProjectMatchGuidanceForQuestion(userQuestion))
 	}
 	if len(data) == 1 {
 		if m, ok := data[0].(map[string]interface{}); ok {
@@ -63,7 +64,7 @@ func ResolveProjectIDsFromProjects(ctx context.Context, c llm.ChatCompletionClie
 		return nil, "", fmt.Errorf("解析 project_id 失败: %w", err)
 	}
 	if parsed.ProjectID <= 0 {
-		return nil, "", errors.New("无法从问题中匹配项目，请在问题中补充项目编号")
+		return nil, "", errors.New(parse.ProjectMatchGuidanceForQuestion(userQuestion))
 	}
 	return []int{parsed.ProjectID}, "", nil
 }

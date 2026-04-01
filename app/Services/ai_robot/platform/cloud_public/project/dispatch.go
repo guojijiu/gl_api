@@ -10,6 +10,7 @@ import (
 	"cloud-platform-api/app/Services/ai_robot/internal/deps"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/client"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/intent"
+	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/parse"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/summary"
 	"cloud-platform-api/app/Services/ai_robot/policy"
 	AiRobotUtils "cloud-platform-api/app/Services/ai_robot/utils"
@@ -36,7 +37,8 @@ func failIfCloudCallFailed(r deps.Responder, d *deps.Deps, errMsg string, status
 }
 
 func summarizeAndReply(r deps.Responder, d *deps.Deps, intentKey string, raw []byte) bool {
-	answer, err := summary.SummarizeWithData(d.Ctx, d.LLM, d.Req.Question, raw)
+	d.RememberIntent(intentKey)
+	answer, err := summary.SummarizeProjectData(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), raw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "生成自然语言回复失败", err)
 		return false
@@ -53,7 +55,7 @@ func summarizeAndReply(r deps.Responder, d *deps.Deps, intentKey string, raw []b
 
 // Dispatch 处理 question_type 为「项目」的请求。
 func Dispatch(r deps.Responder, d *deps.Deps) {
-	plan, err := intent.PlanProjectIntent(d.Ctx, d.LLM, d.Req.Question)
+	plan, err := intent.PlanProjectIntent(d.Ctx, d.LLM, d.Question(), d.ContextSummary())
 	if err != nil {
 		r.FrontFailed(d.Gin, "意图解析失败", err)
 		return
@@ -64,7 +66,7 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 	}
 	switch plan.Intent {
 	case intent.IntentUnsupported:
-		answer, e := summary.SummarizeUnsupported(d.Ctx, d.LLM, d.Req.Question, plan.Reason)
+		answer, e := summary.SummarizeUnsupported(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), plan.Reason)
 		if e != nil {
 			r.FrontFailed(d.Gin, "生成回复失败", e)
 			return
@@ -92,7 +94,7 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 }
 
 func handleProjectListOrExpiring(r deps.Responder, d *deps.Deps, intentKey string) {
-	raw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token)
+	raw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
 	if failIfCloudCallFailed(r, d, "请求云平台失败", status, err) {
 		return
 	}
@@ -103,7 +105,7 @@ func handleProjectListOrExpiring(r deps.Responder, d *deps.Deps, intentKey strin
 }
 
 func handleContractList(r deps.Responder, d *deps.Deps, intentKey string) {
-	raw, status, err := d.Cloud().Contract().List(d.Ctx, d.PlatformID(), d.Token, "")
+	raw, status, err := d.Cloud().Contract().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractContractFiltersFromQuestion(d.Question()))
 	if failIfCloudCallFailed(r, d, "查询合同列表失败", status, err) {
 		return
 	}
@@ -111,16 +113,19 @@ func handleContractList(r deps.Responder, d *deps.Deps, intentKey string) {
 }
 
 func handleContractProjects(r deps.Responder, d *deps.Deps, intentKey string) {
-	contractsRaw, status, err := d.Cloud().Contract().List(d.Ctx, d.PlatformID(), d.Token, "")
+	contractFilters := parse.ExtractContractFiltersFromQuestion(d.Question())
+	projectFilters := parse.ExtractProjectFiltersFromQuestion(d.Question())
+	contractsRaw, status, err := d.Cloud().Contract().List(d.Ctx, d.PlatformID(), d.Token, contractFilters)
 	if failIfCloudCallFailed(r, d, "查询合同列表失败", status, err) {
 		return
 	}
-	contractIDs, matchedContractNumber, err := ResolveContractIDsFromContracts(d.Ctx, d.Cfg, d.Req.Question, contractsRaw)
+	contractIDs, matchedContractNumber, err := ResolveContractIDsFromContracts(d.Ctx, d.Cfg, d.Question(), contractsRaw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "自动匹配合同失败", err)
 		return
 	}
 
+	d.RememberContractMatch(contractIDs, matchedContractNumber)
 	var grouped []gin.H
 	if len(contractIDs) > 0 {
 		// 并行拉取每个 contract_id 下的项目列表，降低 overall 延迟。
@@ -141,7 +146,7 @@ func handleContractProjects(r deps.Responder, d *deps.Deps, intentKey string) {
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				raw, st, e := d.Cloud().Project().ListByContract(d.Ctx, d.PlatformID(), d.Token, contractID)
+				raw, st, e := d.Cloud().Project().ListByContract(d.Ctx, d.PlatformID(), d.Token, contractID, projectFilters)
 				if e != nil || st >= 400 {
 					return
 				}
@@ -170,7 +175,8 @@ func handleContractProjects(r deps.Responder, d *deps.Deps, intentKey string) {
 		return
 	}
 	summaryRaw, _ := json.Marshal(gin.H{"contract_projects": grouped})
-	answer, err := summary.SummarizeWithData(d.Ctx, d.LLM, d.Req.Question, summaryRaw)
+	d.RememberIntent(intentKey)
+	answer, err := summary.SummarizeProjectData(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), summaryRaw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "生成自然语言回复失败", err)
 		return
@@ -187,15 +193,16 @@ func handleContractProjects(r deps.Responder, d *deps.Deps, intentKey string) {
 }
 
 func handleDownloadFinalReport(r deps.Responder, d *deps.Deps, intentKey string) {
-	projectsRaw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token)
+	projectsRaw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
 	if failIfCloudCallFailed(r, d, "查询项目列表失败", status, err) {
 		return
 	}
-	projectIDs, matchedNumber, err := ResolveProjectIDsFromProjects(d.Ctx, d.LLM, d.Cfg, d.Req.Question, projectsRaw)
+	projectIDs, matchedNumber, err := ResolveProjectIDsFromProjects(d.Ctx, d.LLM, d.Cfg, d.Question(), projectsRaw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "自动匹配项目失败", err)
 		return
 	}
+	d.RememberProjectMatch(projectIDs, matchedNumber)
 	var links []gin.H
 	var rawList []interface{}
 	if len(projectIDs) > 0 {
@@ -258,8 +265,10 @@ func handleDownloadFinalReport(r deps.Responder, d *deps.Deps, intentKey string)
 		r.FrontFailed(d.Gin, "请求云平台失败", nil)
 		return
 	}
+	d.RememberDownloadResult("final_report", len(links) > 0)
 	summaryRaw, _ := json.Marshal(gin.H{"links": links, "raw": rawList})
-	answer, err := summary.SummarizeWithData(d.Ctx, d.LLM, d.Req.Question, summaryRaw)
+	d.RememberIntent(intentKey)
+	answer, err := summary.SummarizeProjectData(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), summaryRaw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "生成自然语言回复失败", err)
 		return
@@ -277,15 +286,16 @@ func handleDownloadFinalReport(r deps.Responder, d *deps.Deps, intentKey string)
 }
 
 func handleDownloadOriginalData(r deps.Responder, d *deps.Deps, intentKey string) {
-	projectsRaw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token)
+	projectsRaw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
 	if failIfCloudCallFailed(r, d, "查询项目列表失败", status, err) {
 		return
 	}
-	projectIDs, matchedNumber, err := ResolveProjectIDsFromProjects(d.Ctx, d.LLM, d.Cfg, d.Req.Question, projectsRaw)
+	projectIDs, matchedNumber, err := ResolveProjectIDsFromProjects(d.Ctx, d.LLM, d.Cfg, d.Question(), projectsRaw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "自动匹配项目失败", err)
 		return
 	}
+	d.RememberProjectMatch(projectIDs, matchedNumber)
 	var links []gin.H
 	var rawList []interface{}
 	if len(projectIDs) > 0 {
@@ -349,8 +359,10 @@ func handleDownloadOriginalData(r deps.Responder, d *deps.Deps, intentKey string
 		r.FrontFailed(d.Gin, "请求云平台失败", nil)
 		return
 	}
+	d.RememberDownloadResult("original_data", len(links) > 0)
 	summaryRaw, _ := json.Marshal(gin.H{"links": links, "raw": rawList})
-	answer, err := summary.SummarizeWithData(d.Ctx, d.LLM, d.Req.Question, summaryRaw)
+	d.RememberIntent(intentKey)
+	answer, err := summary.SummarizeProjectData(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), summaryRaw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "生成自然语言回复失败", err)
 		return

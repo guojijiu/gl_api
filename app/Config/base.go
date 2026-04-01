@@ -58,6 +58,7 @@ import (
 type Config struct {
 	Server            ServerConfig            `mapstructure:"server"`
 	Database          DatabaseConfig          `mapstructure:"database"`
+	MongoDB           MongoDBConfig           `mapstructure:"mongodb"`
 	JWT               JWTConfig               `mapstructure:"jwt"`
 	Redis             RedisConfig             `mapstructure:"redis"`
 	Storage           StorageConfig           `mapstructure:"storage"`
@@ -77,6 +78,7 @@ var globalConfig *Config
 func (c *Config) SetDefaults() {
 	c.Server.SetDefaults()
 	c.Database.SetDefaults()
+	c.MongoDB.SetDefaults()
 	c.JWT.SetDefaults()
 	c.Redis.SetDefaults()
 	c.Storage.SetDefaults()
@@ -94,6 +96,7 @@ func (c *Config) SetDefaults() {
 func (c *Config) BindEnvs() {
 	c.Server.BindEnvs()
 	c.Database.BindEnvs()
+	c.MongoDB.BindEnvs()
 	c.JWT.BindEnvs()
 	c.Redis.BindEnvs()
 	c.Storage.BindEnvs()

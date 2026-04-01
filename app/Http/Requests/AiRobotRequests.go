@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"cloud-platform-api/app/Config"
 )
@@ -122,6 +123,44 @@ type AiRobotChatRequest struct {
 	Platform string `json:"platform" binding:"required"`
 	// QuestionType 业务分类，当前仅实现 1=项目 2=任务 3=项目文章
 	QuestionType int `json:"question_type" binding:"required"`
+	// ConversationID 可选，会话标识；为空时后端会自动生成。
+	ConversationID string `json:"conversation_id"`
+	// MessageID 可选，消息标识；为空时后端会自动生成。
+	MessageID string `json:"message_id"`
+	// EnableContext 是否启用上下文增强；当传入 user_id 时后端会默认开启。
+	EnableContext bool `json:"enable_context"`
+	// UserID 当前对话所属用户标识，由接口显式传入；允许字符串用户ID。
+	UserID string `json:"user_id"`
+	// ResolvedQuestion 运行期生成的增强问题文本，不参与外部入参绑定。
+	ResolvedQuestion string `json:"-"`
+}
+
+// AiRobotConversationManageRequest 用于读取/删除单条 ai_robot 会话。
+type AiRobotConversationManageRequest struct {
+	UserID         string `form:"user_id" json:"user_id"`
+	Platform       string `form:"platform" json:"platform"`
+	ConversationID string `form:"conversation_id" json:"conversation_id"`
+}
+
+// AiRobotConversationListRequest 用于分页查询 ai_robot 会话列表。
+type AiRobotConversationListRequest struct {
+	UserID         string `form:"user_id" json:"user_id"`
+	Platform       string `form:"platform" json:"platform"`
+	ConversationID string `form:"conversation_id" json:"conversation_id"`
+	QuestionType   int    `form:"question_type" json:"question_type"`
+	StartTime      string `form:"start_time" json:"start_time"`
+	EndTime        string `form:"end_time" json:"end_time"`
+	Page           int    `form:"page" json:"page"`
+	Limit          int    `form:"limit" json:"limit"`
+}
+
+// AiRobotConversationCleanupRequest 用于按条件批量清理 ai_robot 会话。
+type AiRobotConversationCleanupRequest struct {
+	UserID       string `form:"user_id" json:"user_id"`
+	Platform     string `form:"platform" json:"platform"`
+	QuestionType int    `form:"question_type" json:"question_type"`
+	StartTime    string `form:"start_time" json:"start_time"`
+	EndTime      string `form:"end_time" json:"end_time"`
 }
 
 // Validate 补充校验（比 binding 更易读，错误信息可直接给前端展示）。
@@ -144,6 +183,151 @@ func (r *AiRobotChatRequest) Validate() error {
 		}
 		return fmt.Errorf("%s 暂不支持 question_type=%d", p, r.QuestionType)
 	}
+	r.UserID = strings.TrimSpace(r.UserID)
+	r.ConversationID = strings.TrimSpace(r.ConversationID)
+	if r.EnableContext {
+		if r.UserID == "" {
+			return errors.New("enable_context=true 时 user_id 不能为空")
+		}
+		if r.ConversationID == "" {
+			return errors.New("enable_context=true 时 conversation_id 不能为空")
+		}
+	}
 
+	return nil
+}
+
+func (r *AiRobotConversationManageRequest) Validate() error {
+	r.UserID = strings.TrimSpace(r.UserID)
+	if r.UserID == "" {
+		return errors.New("user_id 不能为空")
+	}
+	p := normalizePlatform(r.Platform)
+	if p == "" {
+		return errors.New("platform 不能为空")
+	}
+	if !IsSupportedPlatform(p) {
+		return fmt.Errorf("platform 不支持（可选：%s）", supportedPlatformsHint())
+	}
+	if strings.TrimSpace(r.ConversationID) == "" {
+		return errors.New("conversation_id 不能为空")
+	}
+	return nil
+}
+
+func (r *AiRobotConversationListRequest) Normalize() {
+	if r.Page <= 0 {
+		r.Page = 1
+	}
+	if r.Limit <= 0 {
+		r.Limit = 20
+	}
+	if r.Limit > 100 {
+		r.Limit = 100
+	}
+	r.UserID = strings.TrimSpace(r.UserID)
+	r.Platform = normalizePlatform(r.Platform)
+	r.ConversationID = strings.TrimSpace(r.ConversationID)
+	r.StartTime = strings.TrimSpace(r.StartTime)
+	r.EndTime = strings.TrimSpace(r.EndTime)
+}
+
+func (r *AiRobotConversationListRequest) Validate() error {
+	r.Normalize()
+	if r.UserID == "" {
+		return errors.New("user_id 不能为空")
+	}
+	if r.Platform != "" && !IsSupportedPlatform(r.Platform) {
+		return fmt.Errorf("platform 不支持（可选：%s）", supportedPlatformsHint())
+	}
+	if r.QuestionType != 0 {
+		if r.Platform == "" {
+			return errors.New("指定 question_type 时必须同时传 platform")
+		}
+		if !IsSupportedQuestionType(r.Platform, r.QuestionType) {
+			hint := supportedQuestionTypesHint(r.Platform)
+			if hint != "" {
+				return fmt.Errorf("%s 暂不支持 question_type=%d（可选：%s）", r.Platform, r.QuestionType, hint)
+			}
+			return fmt.Errorf("%s 暂不支持 question_type=%d", r.Platform, r.QuestionType)
+		}
+	}
+	startAt, err := parseConversationListTime(r.StartTime)
+	if err != nil {
+		return fmt.Errorf("start_time 格式错误: %w", err)
+	}
+	endAt, err := parseConversationListTime(r.EndTime)
+	if err != nil {
+		return fmt.Errorf("end_time 格式错误: %w", err)
+	}
+	if !startAt.IsZero() && !endAt.IsZero() && startAt.After(endAt) {
+		return errors.New("start_time 不能晚于 end_time")
+	}
+	return nil
+}
+
+func parseConversationListTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, value); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("仅支持 RFC3339、2006-01-02 15:04:05、2006-01-02")
+}
+
+func ParseConversationListTimeForController(value string) (time.Time, error) {
+	return parseConversationListTime(value)
+}
+
+func (r *AiRobotConversationCleanupRequest) Normalize() {
+	r.UserID = strings.TrimSpace(r.UserID)
+	r.Platform = normalizePlatform(r.Platform)
+	r.StartTime = strings.TrimSpace(r.StartTime)
+	r.EndTime = strings.TrimSpace(r.EndTime)
+}
+
+func (r *AiRobotConversationCleanupRequest) Validate() error {
+	r.Normalize()
+	if r.UserID == "" {
+		return errors.New("user_id 不能为空")
+	}
+	if r.Platform != "" && !IsSupportedPlatform(r.Platform) {
+		return fmt.Errorf("platform 不支持（可选：%s）", supportedPlatformsHint())
+	}
+	if r.QuestionType != 0 {
+		if r.Platform == "" {
+			return errors.New("指定 question_type 时必须同时传 platform")
+		}
+		if !IsSupportedQuestionType(r.Platform, r.QuestionType) {
+			hint := supportedQuestionTypesHint(r.Platform)
+			if hint != "" {
+				return fmt.Errorf("%s 暂不支持 question_type=%d（可选：%s）", r.Platform, r.QuestionType, hint)
+			}
+			return fmt.Errorf("%s 暂不支持 question_type=%d", r.Platform, r.QuestionType)
+		}
+	}
+	startAt, err := parseConversationListTime(r.StartTime)
+	if err != nil {
+		return fmt.Errorf("start_time 格式错误: %w", err)
+	}
+	endAt, err := parseConversationListTime(r.EndTime)
+	if err != nil {
+		return fmt.Errorf("end_time 格式错误: %w", err)
+	}
+	if !startAt.IsZero() && !endAt.IsZero() && startAt.After(endAt) {
+		return errors.New("start_time 不能晚于 end_time")
+	}
+	if r.Platform == "" && r.QuestionType == 0 && startAt.IsZero() && endAt.IsZero() {
+		return errors.New("批量删除至少需要一个筛选条件")
+	}
 	return nil
 }

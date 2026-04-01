@@ -36,7 +36,8 @@ func failIfTaskCloudCallFailed(r deps.Responder, d *deps.Deps, errMsg string, st
 }
 
 func summarizeTaskWithData(r deps.Responder, d *deps.Deps, intentKey string, raw []byte, extra gin.H) bool {
-	answer, err := summary.SummarizeWithData(d.Ctx, d.LLM, d.Req.Question, raw)
+	d.RememberIntent(intentKey)
+	answer, err := summary.SummarizeTaskData(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), raw)
 	if err != nil {
 		r.FrontFailed(d.Gin, "生成自然语言回复失败", err)
 		return false
@@ -56,16 +57,17 @@ func summarizeTaskWithData(r deps.Responder, d *deps.Deps, intentKey string, raw
 
 // Dispatch 处理 question_type 为「任务」的请求。
 func Dispatch(r deps.Responder, d *deps.Deps) {
-	plan, err := intent.PlanTaskIntent(d.Ctx, d.LLM, d.Req.Question)
+	plan, err := intent.PlanTaskIntent(d.Ctx, d.LLM, d.Question(), d.ContextSummary())
 	if err != nil {
 		r.FrontFailed(d.Gin, "意图解析失败", err)
 		return
 	}
-	uuids := parse.ExtractTaskUUIDsFromQuestion(d.Req.Question)
+	uuids := parse.ExtractTaskUUIDsFromQuestion(d.Question())
 	if len(uuids) == 0 {
-		r.FrontFailed(d.Gin, "请在问题中提供任务编号（uuid），例如：xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", nil)
+		r.FrontFailed(d.Gin, parse.TaskUUIDGuidanceForQuestion(d.Question()), nil)
 		return
 	}
+	d.RememberTaskUUIDs(uuids)
 	uuidsCSV := strings.Join(uuids, ",")
 
 	if !policy.IsIntentAllowed(d.PlatformID(), d.Req.QuestionType, plan.Intent) {
@@ -74,7 +76,7 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 	}
 	switch plan.Intent {
 	case intent.IntentUnsupported:
-		answer, e := summary.SummarizeUnsupported(d.Ctx, d.LLM, d.Req.Question, plan.Reason)
+		answer, e := summary.SummarizeUnsupported(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), plan.Reason)
 		if e != nil {
 			r.FrontFailed(d.Gin, "生成回复失败", e)
 			return
@@ -100,6 +102,7 @@ func handleTaskStatus(r deps.Responder, d *deps.Deps, intentKey string, uuids []
 	if failIfTaskCloudCallFailed(r, d, "查询任务状态失败", statusCode, err) {
 		return
 	}
+	d.RememberTaskStatusResult(statusRaw)
 
 	// 并行处理每个 uuid 的下游调用，降低整体耗时。
 
@@ -118,11 +121,12 @@ func handleTaskStatus(r deps.Responder, d *deps.Deps, intentKey string, uuids []
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			listRaw, st, e := d.Cloud().Task().ListToolByUUID(d.Ctx, d.PlatformID(), d.Token, uuid)
+			taskFilters := parse.ExtractTaskFiltersFromQuestion(d.Question(), uuid)
+			listRaw, st, e := d.Cloud().Task().ListToolByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
 			if e != nil || st >= 400 {
 				listRaw = nil
 			}
-			workflowRaw, wst, we := d.Cloud().Task().ListWorkflowByUUID(d.Ctx, d.PlatformID(), d.Token, uuid)
+			workflowRaw, wst, we := d.Cloud().Task().ListWorkflowByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
 			if we != nil || wst >= 400 {
 				workflowRaw = nil
 			}
@@ -158,7 +162,7 @@ func handleTaskStatus(r deps.Responder, d *deps.Deps, intentKey string, uuids []
 		details = append(details, detailsByIndex[i].h)
 	}
 
-	moduleIDs := parse.ExtractNumericIDsFromQuestion(d.Req.Question)
+	moduleIDs := parse.ExtractNumericIDsFromQuestion(d.Question())
 	if len(moduleIDs) > 0 {
 		// 并行处理 module 相关下游调用，降低整体耗时。
 		// 保持输出顺序：按 moduleIDs 的原始顺序追加 details。
@@ -234,11 +238,12 @@ func handleTaskDownload(r deps.Responder, d *deps.Deps, intentKey string, uuids 
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			listRaw, st, e := d.Cloud().Task().ListToolByUUID(d.Ctx, d.PlatformID(), d.Token, uuid)
+			taskFilters := parse.ExtractTaskFiltersFromQuestion(d.Question(), uuid)
+			listRaw, st, e := d.Cloud().Task().ListToolByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
 			if e != nil || st >= 400 {
 				listRaw = nil
 			}
-			workflowRaw, wst, we := d.Cloud().Task().ListWorkflowByUUID(d.Ctx, d.PlatformID(), d.Token, uuid)
+			workflowRaw, wst, we := d.Cloud().Task().ListWorkflowByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
 			if we != nil || wst >= 400 {
 				workflowRaw = nil
 			}
@@ -273,7 +278,7 @@ func handleTaskDownload(r deps.Responder, d *deps.Deps, intentKey string, uuids 
 		links = append(links, resultsByIndex[i].links...)
 	}
 
-	moduleIDs := parse.ExtractNumericIDsFromQuestion(d.Req.Question)
+	moduleIDs := parse.ExtractNumericIDsFromQuestion(d.Question())
 	if len(moduleIDs) > 0 {
 		// 并行处理 module 相关下游调用，降低整体耗时。
 		// 保持输出顺序：按 moduleIDs 的原始顺序追加 rawList/links。
@@ -332,9 +337,10 @@ func handleTaskDownload(r deps.Responder, d *deps.Deps, intentKey string, uuids 
 		}
 	}
 	if len(rawList) == 0 {
-		r.FrontFailed(d.Gin, "下载链接生成失败，请确认任务编号/权限", nil)
+		r.FrontFailed(d.Gin, parse.TaskUUIDGuidanceForQuestion(d.Question()), nil)
 		return
 	}
+	d.RememberDownloadResult("task_result", len(links) > 0)
 	summaryRaw, _ := json.Marshal(gin.H{"links": links, "raw": rawList})
 	_ = summarizeTaskWithData(r, d, intentKey, summaryRaw, gin.H{
 		"uuids":          uuids,

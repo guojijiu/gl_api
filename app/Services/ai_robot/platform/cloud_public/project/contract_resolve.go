@@ -8,6 +8,7 @@ import (
 
 	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/client"
+	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/parse"
 )
 
 func ResolveContractIDsFromContracts(_ context.Context, cfg *Config.AiGatewayConfig, userQuestion string, contractsJSON []byte) ([]int, string, error) {
@@ -29,10 +30,10 @@ func ResolveContractIDsFromContracts(_ context.Context, cfg *Config.AiGatewayCon
 			}
 		}
 		if cfg != nil && cfg.StrictMode {
-			return nil, "", errors.New("严格模式已开启：未按合同编号匹配到数据，请确认合同编号后重试")
+			return nil, "", errors.New(parse.ContractMatchGuidanceForQuestion(userQuestion))
 		}
 	} else if cfg != nil && cfg.StrictMode {
-		return nil, "", errors.New("严格模式已开启：请在问题中明确提供合同编号")
+		return nil, "", errors.New(parse.ContractMatchGuidanceForQuestion(userQuestion))
 	}
 	if len(data) == 1 {
 		if m, ok := data[0].(map[string]interface{}); ok {
@@ -41,5 +42,5 @@ func ResolveContractIDsFromContracts(_ context.Context, cfg *Config.AiGatewayCon
 			}
 		}
 	}
-	return nil, "", errors.New("无法从问题中匹配合同，请补充合同编号")
+	return nil, "", errors.New(parse.ContractMatchGuidanceForQuestion(userQuestion))
 }
