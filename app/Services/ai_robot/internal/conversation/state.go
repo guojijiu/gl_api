@@ -3,6 +3,8 @@ package conversation
 import (
 	"strings"
 	"time"
+
+	"cloud-platform-api/app/Services/ai_robot/internal/timeutil"
 )
 
 const maxRecentTurns = 6
@@ -13,6 +15,7 @@ type Turn struct {
 	QuestionType   int       `json:"question_type"`
 	Question       string    `json:"question"`
 	Resolved       string    `json:"resolved_question"`
+	Answer         string    `json:"answer,omitempty"`
 	Intent         string    `json:"intent,omitempty"`
 	ProjectNumber  string    `json:"project_number,omitempty"`
 	ContractNumber string    `json:"contract_number,omitempty"`
@@ -31,6 +34,7 @@ type State struct {
 	LastIntent     string `json:"last_intent"`
 	LastQuestion   string `json:"last_question"`
 	LastResolved   string `json:"last_resolved_question"`
+	LastAnswer     string `json:"last_answer,omitempty"`
 	ContextSummary string `json:"context_summary,omitempty"`
 
 	LastProjectIDs     []int    `json:"last_project_ids,omitempty"`
@@ -53,7 +57,7 @@ type State struct {
 }
 
 func (s *State) Touch() {
-	s.UpdatedAt = time.Now()
+	s.UpdatedAt = timeutil.NowInShanghai()
 }
 
 func (s *State) RecordTurn(messageID string) {
@@ -72,12 +76,13 @@ func (s *State) RecordTurn(messageID string) {
 		QuestionType:   s.QuestionType,
 		Question:       s.LastQuestion,
 		Resolved:       s.LastResolved,
+		Answer:         s.LastAnswer,
 		Intent:         s.LastIntent,
 		ProjectNumber:  s.LastProjectNumber,
 		ContractNumber: s.LastContractNumber,
 		ArticleNameCN:  s.LastArticleNameCN,
 		JournalName:    s.LastJournalName,
-		CreatedAt:      time.Now(),
+		CreatedAt:      timeutil.NowInShanghai(),
 	}
 	if len(s.LastTaskUUIDs) > 0 {
 		turn.TaskUUID = s.LastTaskUUIDs[0]
@@ -194,6 +199,9 @@ func buildTurnSummary(order int, turn Turn) string {
 	}
 	if turn.Question != "" {
 		fields = append(fields, "问题="+truncateTurnText(turn.Question, 20))
+	}
+	if turn.Answer != "" {
+		fields = append(fields, "回答="+truncateTurnText(turn.Answer, 24))
 	}
 	return strings.Join(fields, " ")
 }

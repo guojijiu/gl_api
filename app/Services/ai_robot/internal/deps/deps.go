@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"cloud-platform-api/app/Config"
 	"cloud-platform-api/app/Http/Requests"
@@ -34,6 +36,9 @@ type Deps struct {
 
 	ConversationStore conversation.Store
 	Conversation      *conversation.State
+
+	llmDurationMS   int64
+	cloudDurationMS int64
 }
 
 func (d *Deps) CurrentUserID() string {
@@ -166,4 +171,60 @@ func (d *Deps) RememberDownloadResult(kind string, hasLink bool) {
 	}
 	d.Conversation.LastDownloadKind = strings.TrimSpace(kind)
 	d.Conversation.LastHasLink = hasLink
+}
+
+func (d *Deps) AddLLMDuration(duration time.Duration) {
+	if d == nil || duration <= 0 {
+		return
+	}
+	total := atomic.AddInt64(&d.llmDurationMS, duration.Milliseconds())
+	if d.Gin != nil {
+		d.Gin.Set("ai_robot_llm_duration_ms", total)
+	}
+}
+
+func (d *Deps) AddCloudDuration(duration time.Duration) {
+	if d == nil || duration <= 0 {
+		return
+	}
+	total := atomic.AddInt64(&d.cloudDurationMS, duration.Milliseconds())
+	if d.Gin != nil {
+		d.Gin.Set("ai_robot_cloud_duration_ms", total)
+	}
+}
+
+func (d *Deps) LLMDurationMS() int64 {
+	if d == nil {
+		return 0
+	}
+	return atomic.LoadInt64(&d.llmDurationMS)
+}
+
+func (d *Deps) CloudDurationMS() int64 {
+	if d == nil {
+		return 0
+	}
+	return atomic.LoadInt64(&d.cloudDurationMS)
+}
+
+func TrackCloudCall[T any](d *Deps, fn func() (T, int, error)) (T, int, error) {
+	return TrackNamedCloudCall("", d, fn)
+}
+
+func TrackNamedCloudCall[T any](apiName string, d *Deps, fn func() (T, int, error)) (T, int, error) {
+	if d != nil && d.Gin != nil {
+		d.Gin.Set("ai_robot_stage", "cloud_call")
+		if strings.TrimSpace(apiName) != "" {
+			d.Gin.Set("ai_robot_cloud_api", strings.TrimSpace(apiName))
+		}
+	}
+	startedAt := time.Now()
+	result, status, err := fn()
+	if d != nil {
+		d.AddCloudDuration(time.Since(startedAt))
+		if d.Gin != nil && status > 0 {
+			d.Gin.Set("ai_robot_cloud_status_code", status)
+		}
+	}
+	return result, status, err
 }

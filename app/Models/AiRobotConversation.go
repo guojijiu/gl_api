@@ -7,6 +7,7 @@ type AiRobotConversationTurn struct {
 	QuestionType   int       `json:"question_type" bson:"question_type"`
 	Question       string    `json:"question" bson:"question"`
 	Resolved       string    `json:"resolved_question" bson:"resolved_question"`
+	Answer         string    `json:"answer,omitempty" bson:"answer,omitempty"`
 	Intent         string    `json:"intent,omitempty" bson:"intent,omitempty"`
 	ProjectNumber  string    `json:"project_number,omitempty" bson:"project_number,omitempty"`
 	ContractNumber string    `json:"contract_number,omitempty" bson:"contract_number,omitempty"`
@@ -27,6 +28,7 @@ type AiRobotConversation struct {
 	LastIntent     string `json:"last_intent" bson:"last_intent"`
 	LastQuestion   string `json:"last_question" bson:"last_question"`
 	LastResolved   string `json:"last_resolved_question" bson:"last_resolved_question"`
+	LastAnswer     string `json:"last_answer,omitempty" bson:"last_answer,omitempty"`
 	ContextSummary string `json:"context_summary,omitempty" bson:"context_summary,omitempty"`
 
 	LastProjectIDs     []int    `json:"last_project_ids,omitempty" bson:"last_project_ids,omitempty"`

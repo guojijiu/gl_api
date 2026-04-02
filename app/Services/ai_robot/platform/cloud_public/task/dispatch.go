@@ -98,7 +98,9 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 }
 
 func handleTaskStatus(r deps.Responder, d *deps.Deps, intentKey string, uuids []string, uuidsCSV string) {
-	statusRaw, statusCode, err := d.Cloud().Task().StatusByUUIDs(d.Ctx, d.PlatformID(), d.Token, uuidsCSV)
+	statusRaw, statusCode, err := deps.TrackNamedCloudCall("task.status_by_uuids", d, func() ([]byte, int, error) {
+		return d.Cloud().Task().StatusByUUIDs(d.Ctx, d.PlatformID(), d.Token, uuidsCSV)
+	})
 	if failIfTaskCloudCallFailed(r, d, "查询任务状态失败", statusCode, err) {
 		return
 	}
@@ -122,11 +124,15 @@ func handleTaskStatus(r deps.Responder, d *deps.Deps, intentKey string, uuids []
 			defer func() { <-sem }()
 
 			taskFilters := parse.ExtractTaskFiltersFromQuestion(d.Question(), uuid)
-			listRaw, st, e := d.Cloud().Task().ListToolByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
+			listRaw, st, e := deps.TrackNamedCloudCall("task.list_tool_by_uuid", d, func() ([]byte, int, error) {
+				return d.Cloud().Task().ListToolByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
+			})
 			if e != nil || st >= 400 {
 				listRaw = nil
 			}
-			workflowRaw, wst, we := d.Cloud().Task().ListWorkflowByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
+			workflowRaw, wst, we := deps.TrackNamedCloudCall("task.list_workflow_by_uuid", d, func() ([]byte, int, error) {
+				return d.Cloud().Task().ListWorkflowByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
+			})
 			if we != nil || wst >= 400 {
 				workflowRaw = nil
 			}
@@ -138,7 +144,9 @@ func handleTaskStatus(r deps.Responder, d *deps.Deps, intentKey string, uuids []
 
 			var result interface{}
 			if taskID > 0 {
-				rRaw, rst, re := d.Cloud().Task().Result(d.Ctx, d.PlatformID(), d.Token, taskID)
+				rRaw, rst, re := deps.TrackNamedCloudCall("task.result", d, func() ([]byte, int, error) {
+					return d.Cloud().Task().Result(d.Ctx, d.PlatformID(), d.Token, taskID)
+				})
 				if re == nil && rst < 400 {
 					result = cloudclient.JsonRaw(rRaw)
 				}
@@ -183,7 +191,9 @@ func handleTaskStatus(r deps.Responder, d *deps.Deps, intentKey string, uuids []
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				mRaw, mst, me := d.Cloud().Task().ModuleDetail(d.Ctx, d.PlatformID(), d.Token, moduleID)
+				mRaw, mst, me := deps.TrackNamedCloudCall("task.module_detail", d, func() ([]byte, int, error) {
+					return d.Cloud().Task().ModuleDetail(d.Ctx, d.PlatformID(), d.Token, moduleID)
+				})
 				if me != nil || mst >= 400 {
 					return
 				}
@@ -239,11 +249,15 @@ func handleTaskDownload(r deps.Responder, d *deps.Deps, intentKey string, uuids 
 			defer func() { <-sem }()
 
 			taskFilters := parse.ExtractTaskFiltersFromQuestion(d.Question(), uuid)
-			listRaw, st, e := d.Cloud().Task().ListToolByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
+			listRaw, st, e := deps.TrackNamedCloudCall("task.list_tool_by_uuid", d, func() ([]byte, int, error) {
+				return d.Cloud().Task().ListToolByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
+			})
 			if e != nil || st >= 400 {
 				listRaw = nil
 			}
-			workflowRaw, wst, we := d.Cloud().Task().ListWorkflowByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
+			workflowRaw, wst, we := deps.TrackNamedCloudCall("task.list_workflow_by_uuid", d, func() ([]byte, int, error) {
+				return d.Cloud().Task().ListWorkflowByUUID(d.Ctx, d.PlatformID(), d.Token, taskFilters)
+			})
 			if we != nil || wst >= 400 {
 				workflowRaw = nil
 			}
@@ -258,7 +272,9 @@ func handleTaskDownload(r deps.Responder, d *deps.Deps, intentKey string, uuids 
 				return
 			}
 
-			dRaw, dst, de := d.Cloud().Task().DownloadResult(d.Ctx, d.PlatformID(), d.Token, taskID)
+			dRaw, dst, de := deps.TrackNamedCloudCall("task.download_result", d, func() ([]byte, int, error) {
+				return d.Cloud().Task().DownloadResult(d.Ctx, d.PlatformID(), d.Token, taskID)
+			})
 			if de != nil || dst >= 400 {
 				return
 			}
@@ -301,7 +317,9 @@ func handleTaskDownload(r deps.Responder, d *deps.Deps, intentKey string, uuids 
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				mRaw, mst, me := d.Cloud().Task().ModuleResultURL(d.Ctx, d.PlatformID(), d.Token, moduleID)
+				mRaw, mst, me := deps.TrackNamedCloudCall("task.module_result_url", d, func() ([]byte, int, error) {
+					return d.Cloud().Task().ModuleResultURL(d.Ctx, d.PlatformID(), d.Token, moduleID)
+				})
 				if me != nil || mst >= 400 {
 					return
 				}

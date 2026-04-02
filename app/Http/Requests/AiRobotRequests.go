@@ -15,6 +15,7 @@ import (
 const AiPlatformCloudPublic = "cloud_public"
 
 // AiPlatformCloudIntranet 平台：内网云平台
+// 当前仅保留独立平台入口与会话审计维度，聊天能力尚未正式开放。
 const AiPlatformCloudIntranet = "cloud_intranet"
 
 // AiPlatformImageCompare 平台：图片对比工具（占位，后续实现）
@@ -43,10 +44,12 @@ var aiPlatformCapabilities = map[string]AiPlatformCapability{
 		},
 	},
 	AiPlatformCloudIntranet: {
-		QuestionTypes: map[int]struct{}{
-			AiQuestionTypeProject: {},
-			AiQuestionTypeTask:    {},
-		},
+		// 说明：
+		// - 内网云平台与公网云平台完全独立维护，不复用公网 question_type 声明；
+		// - 当前仅保留平台标识，便于后续按独立节奏开放能力；
+		// - 在真正完成对接前，这里不要提前声明可用 question_type，
+		//   否则会出现“参数校验通过，但业务分发后提示暂未对接”的假可用状态。
+		QuestionTypes: map[int]struct{}{},
 	},
 	AiPlatformImageCompare: {
 		QuestionTypes: map[int]struct{}{
@@ -140,6 +143,7 @@ type AiRobotConversationManageRequest struct {
 	UserID         string `form:"user_id" json:"user_id"`
 	Platform       string `form:"platform" json:"platform"`
 	ConversationID string `form:"conversation_id" json:"conversation_id"`
+	MessageID      string `form:"message_id" json:"message_id"`
 }
 
 // AiRobotConversationListRequest 用于分页查询 ai_robot 会话列表。
@@ -152,6 +156,22 @@ type AiRobotConversationListRequest struct {
 	EndTime        string `form:"end_time" json:"end_time"`
 	Page           int    `form:"page" json:"page"`
 	Limit          int    `form:"limit" json:"limit"`
+}
+
+type AiRobotConversationMessageListRequest struct {
+	UserID         string `form:"user_id" json:"user_id"`
+	Platform       string `form:"platform" json:"platform"`
+	ConversationID string `form:"conversation_id" json:"conversation_id"`
+	Page           int    `form:"page" json:"page"`
+	Limit          int    `form:"limit" json:"limit"`
+}
+
+type AiRobotConversationMessageStatsRequest struct {
+	UserID       string `form:"user_id" json:"user_id"`
+	Platform     string `form:"platform" json:"platform"`
+	QuestionType int    `form:"question_type" json:"question_type"`
+	StartTime    string `form:"start_time" json:"start_time"`
+	EndTime      string `form:"end_time" json:"end_time"`
 }
 
 // AiRobotConversationCleanupRequest 用于按条件批量清理 ai_robot 会话。
@@ -199,6 +219,7 @@ func (r *AiRobotChatRequest) Validate() error {
 
 func (r *AiRobotConversationManageRequest) Validate() error {
 	r.UserID = strings.TrimSpace(r.UserID)
+	r.MessageID = strings.TrimSpace(r.MessageID)
 	if r.UserID == "" {
 		return errors.New("user_id 不能为空")
 	}
@@ -233,6 +254,79 @@ func (r *AiRobotConversationListRequest) Normalize() {
 }
 
 func (r *AiRobotConversationListRequest) Validate() error {
+	r.Normalize()
+	if r.UserID == "" {
+		return errors.New("user_id 不能为空")
+	}
+	if r.Platform != "" && !IsSupportedPlatform(r.Platform) {
+		return fmt.Errorf("platform 不支持（可选：%s）", supportedPlatformsHint())
+	}
+	if r.QuestionType != 0 {
+		if r.Platform == "" {
+			return errors.New("指定 question_type 时必须同时传 platform")
+		}
+		if !IsSupportedQuestionType(r.Platform, r.QuestionType) {
+			hint := supportedQuestionTypesHint(r.Platform)
+			if hint != "" {
+				return fmt.Errorf("%s 暂不支持 question_type=%d（可选：%s）", r.Platform, r.QuestionType, hint)
+			}
+			return fmt.Errorf("%s 暂不支持 question_type=%d", r.Platform, r.QuestionType)
+		}
+	}
+	startAt, err := parseConversationListTime(r.StartTime)
+	if err != nil {
+		return fmt.Errorf("start_time 格式错误: %w", err)
+	}
+	endAt, err := parseConversationListTime(r.EndTime)
+	if err != nil {
+		return fmt.Errorf("end_time 格式错误: %w", err)
+	}
+	if !startAt.IsZero() && !endAt.IsZero() && startAt.After(endAt) {
+		return errors.New("start_time 不能晚于 end_time")
+	}
+	return nil
+}
+
+func (r *AiRobotConversationMessageListRequest) Normalize() {
+	if r.Page <= 0 {
+		r.Page = 1
+	}
+	if r.Limit <= 0 {
+		r.Limit = 20
+	}
+	if r.Limit > 100 {
+		r.Limit = 100
+	}
+	r.UserID = strings.TrimSpace(r.UserID)
+	r.Platform = normalizePlatform(r.Platform)
+	r.ConversationID = strings.TrimSpace(r.ConversationID)
+}
+
+func (r *AiRobotConversationMessageListRequest) Validate() error {
+	r.Normalize()
+	if r.UserID == "" {
+		return errors.New("user_id 不能为空")
+	}
+	if r.Platform == "" {
+		return errors.New("platform 不能为空")
+	}
+	if !IsSupportedPlatform(r.Platform) {
+		return fmt.Errorf("platform 不支持（可选：%s）", supportedPlatformsHint())
+	}
+	if r.ConversationID == "" {
+		return errors.New("conversation_id 不能为空")
+	}
+	return nil
+}
+
+func (r *AiRobotConversationMessageStatsRequest) Normalize() {
+	r.UserID = strings.TrimSpace(r.UserID)
+	r.Platform = normalizePlatform(r.Platform)
+	r.StartTime = strings.TrimSpace(r.StartTime)
+	r.EndTime = strings.TrimSpace(r.EndTime)
+}
+
+func (r *AiRobotConversationMessageStatsRequest) Validate() error {
 	r.Normalize()
 	if r.UserID == "" {
 		return errors.New("user_id 不能为空")

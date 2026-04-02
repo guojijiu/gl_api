@@ -94,7 +94,9 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 }
 
 func handleProjectListOrExpiring(r deps.Responder, d *deps.Deps, intentKey string) {
-	raw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
+	raw, status, err := deps.TrackNamedCloudCall("project.list", d, func() ([]byte, int, error) {
+		return d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
+	})
 	if failIfCloudCallFailed(r, d, "请求云平台失败", status, err) {
 		return
 	}
@@ -105,7 +107,9 @@ func handleProjectListOrExpiring(r deps.Responder, d *deps.Deps, intentKey strin
 }
 
 func handleContractList(r deps.Responder, d *deps.Deps, intentKey string) {
-	raw, status, err := d.Cloud().Contract().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractContractFiltersFromQuestion(d.Question()))
+	raw, status, err := deps.TrackNamedCloudCall("contract.list", d, func() ([]byte, int, error) {
+		return d.Cloud().Contract().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractContractFiltersFromQuestion(d.Question()))
+	})
 	if failIfCloudCallFailed(r, d, "查询合同列表失败", status, err) {
 		return
 	}
@@ -115,7 +119,9 @@ func handleContractList(r deps.Responder, d *deps.Deps, intentKey string) {
 func handleContractProjects(r deps.Responder, d *deps.Deps, intentKey string) {
 	contractFilters := parse.ExtractContractFiltersFromQuestion(d.Question())
 	projectFilters := parse.ExtractProjectFiltersFromQuestion(d.Question())
-	contractsRaw, status, err := d.Cloud().Contract().List(d.Ctx, d.PlatformID(), d.Token, contractFilters)
+	contractsRaw, status, err := deps.TrackNamedCloudCall("contract.list", d, func() ([]byte, int, error) {
+		return d.Cloud().Contract().List(d.Ctx, d.PlatformID(), d.Token, contractFilters)
+	})
 	if failIfCloudCallFailed(r, d, "查询合同列表失败", status, err) {
 		return
 	}
@@ -146,7 +152,9 @@ func handleContractProjects(r deps.Responder, d *deps.Deps, intentKey string) {
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				raw, st, e := d.Cloud().Project().ListByContract(d.Ctx, d.PlatformID(), d.Token, contractID, projectFilters)
+				raw, st, e := deps.TrackNamedCloudCall("project.list_by_contract", d, func() ([]byte, int, error) {
+					return d.Cloud().Project().ListByContract(d.Ctx, d.PlatformID(), d.Token, contractID, projectFilters)
+				})
 				if e != nil || st >= 400 {
 					return
 				}
@@ -193,7 +201,9 @@ func handleContractProjects(r deps.Responder, d *deps.Deps, intentKey string) {
 }
 
 func handleDownloadFinalReport(r deps.Responder, d *deps.Deps, intentKey string) {
-	projectsRaw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
+	projectsRaw, status, err := deps.TrackNamedCloudCall("project.list", d, func() ([]byte, int, error) {
+		return d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
+	})
 	if failIfCloudCallFailed(r, d, "查询项目列表失败", status, err) {
 		return
 	}
@@ -226,7 +236,9 @@ func handleDownloadFinalReport(r deps.Responder, d *deps.Deps, intentKey string)
 				sem <- struct{}{}
 				defer func() { <-sem }()
 
-				raw, st, e := d.Cloud().Project().ZipURL(d.Ctx, d.PlatformID(), d.Token, projectID)
+				raw, st, e := deps.TrackNamedCloudCall("project.zip_url", d, func() ([]byte, int, error) {
+					return d.Cloud().Project().ZipURL(d.Ctx, d.PlatformID(), d.Token, projectID)
+				})
 				if e != nil || st >= 400 {
 					return
 				}
@@ -286,7 +298,9 @@ func handleDownloadFinalReport(r deps.Responder, d *deps.Deps, intentKey string)
 }
 
 func handleDownloadOriginalData(r deps.Responder, d *deps.Deps, intentKey string) {
-	projectsRaw, status, err := d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
+	projectsRaw, status, err := deps.TrackNamedCloudCall("project.list", d, func() ([]byte, int, error) {
+		return d.Cloud().Project().List(d.Ctx, d.PlatformID(), d.Token, parse.ExtractProjectFiltersFromQuestion(d.Question()))
+	})
 	if failIfCloudCallFailed(r, d, "查询项目列表失败", status, err) {
 		return
 	}
@@ -320,7 +334,9 @@ func handleDownloadOriginalData(r deps.Responder, d *deps.Deps, intentKey string
 				defer func() { <-sem }()
 
 				accessCode := AiRobotUtils.GenerateAccessCode(6)
-				raw, st, e := d.Cloud().Project().OriginalDataURL(d.Ctx, d.PlatformID(), d.Token, projectID, accessCode)
+				raw, st, e := deps.TrackNamedCloudCall("project.original_data_url", d, func() ([]byte, int, error) {
+					return d.Cloud().Project().OriginalDataURL(d.Ctx, d.PlatformID(), d.Token, projectID, accessCode)
+				})
 				if e != nil || st >= 400 {
 					return
 				}

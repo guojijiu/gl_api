@@ -245,13 +245,21 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 		tagGroup.DELETE("/:id", tagController.DeleteTag)
 	}
 
-	// AI 机器人（平台 -> 业务类型 -> 意图）：
-	// - POST /chat：主问答入口（当前支持 project=1、task=2）
-	// - GET  /capabilities：查看当前生效能力矩阵（便于排查配置）
-	// - GET  /conversations：分页查看会话列表
-	// - DELETE /conversations：按条件批量删除会话
-	// - GET  /conversation：查看单条上下文会话
-	// - DELETE /conversation：删除单条上下文会话
+	// AI 机器人路由说明（按“平台 -> question_type -> intent”三层分发）：
+	// - POST /chat：主问答入口；请求体核心字段为 platform、question_type、question
+	// - GET  /capabilities：查看当前服务实际生效的能力矩阵与关键配置，便于联调/排障
+	// - GET  /conversations：分页查看会话列表，适合后台排查用户上下文命中情况
+	// - DELETE /conversations：按 user/platform/question_type/time 条件批量清理会话
+	// - GET  /conversation：查看单条会话详情，支持附带 message_id 定位当前消息
+	// - GET  /message：按 message_id 精确读取单条消息审计记录
+	// - GET  /messages：分页查看某个会话的完整消息历史
+	// - GET  /messages/stats：查看消息审计统计（成功率、阶段、结果类型等聚合来源）
+	// - DELETE /conversation：删除单条会话及其对应消息记录
+	//
+	// 当前能力边界：
+	// - `cloud_public`：已接入 project=1、task=2、project_article=3
+	// - `cloud_intranet`：平台入口保留，但聊天能力按独立节奏建设，不与公网平台耦合
+	// - 会话/消息查询接口是平台无关的审计能力，只按 platform 维度做数据隔离
 	aiRobotController := Controllers.NewAiRobotController()
 	aiRobotGroup := v1.Group("/ai_robot")
 	{
@@ -260,6 +268,9 @@ func RegisterRoutes(engine *gin.Engine, storageManager *Storage.StorageManager, 
 		aiRobotGroup.GET("/conversations", aiRobotController.ListConversations)
 		aiRobotGroup.DELETE("/conversations", aiRobotController.DeleteConversations)
 		aiRobotGroup.GET("/conversation", aiRobotController.GetConversation)
+		aiRobotGroup.GET("/message", aiRobotController.GetMessage)
+		aiRobotGroup.GET("/messages", aiRobotController.ListMessages)
+		aiRobotGroup.GET("/messages/stats", aiRobotController.MessageStats)
 		aiRobotGroup.DELETE("/conversation", aiRobotController.DeleteConversation)
 	}
 

@@ -78,7 +78,9 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 func handleProjectArticleList(r deps.Responder, d *deps.Deps, intentKey string) {
 	articleFilters := parse.ExtractProjectArticleFiltersFromQuestion(d.Question())
 	d.RememberProjectArticleFilters(articleFilters)
-	raw, status, err := d.Cloud().ProjectArticle().List(d.Ctx, d.PlatformID(), d.Token, articleFilters)
+	raw, status, err := deps.TrackNamedCloudCall("project_article.list", d, func() ([]byte, int, error) {
+		return d.Cloud().ProjectArticle().List(d.Ctx, d.PlatformID(), d.Token, articleFilters)
+	})
 	if failIfProjectArticleCloudCallFailed(r, d, "请求云平台失败", status, err) {
 		return
 	}

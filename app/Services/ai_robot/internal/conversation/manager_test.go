@@ -89,6 +89,7 @@ func TestSaveState_RecordsRecentTurn(t *testing.T) {
 		LastIntent:        "download_final_report",
 		LastQuestion:      req.Question,
 		LastResolved:      req.ResolvedQuestion,
+		LastAnswer:        "这是本轮回答",
 		LastProjectNumber: "MWXS-25-10500-a",
 	}
 
@@ -105,6 +106,12 @@ func TestSaveState_RecordsRecentTurn(t *testing.T) {
 	}
 	if got.RecentTurns[0].ProjectNumber != "MWXS-25-10500-a" {
 		t.Fatalf("unexpected project number: %+v", got.RecentTurns[0])
+	}
+	if got.RecentTurns[0].Answer != "这是本轮回答" {
+		t.Fatalf("unexpected answer: %+v", got.RecentTurns[0])
+	}
+	if got.LastAnswer != "这是本轮回答" {
+		t.Fatalf("unexpected last answer: %+v", got)
 	}
 	if got.ContextSummary == "" {
 		t.Fatalf("expected context summary to be generated")
