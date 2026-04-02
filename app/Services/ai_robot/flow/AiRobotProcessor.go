@@ -211,8 +211,41 @@ func enrichAiRobotFlowContent(ctx *gin.Context, content interface{}) gin.H {
 		if responseSize := ctx.GetInt64("ai_robot_response_size"); responseSize > 0 {
 			base["response_size"] = responseSize
 		}
+		// 当结果较多/响应体较大时，回答通常只会展示摘要或部分示例；
+		// 这里给出显式提示，避免客户误以为“总共就这些数据”。
+		if _, exists := base["notice"]; !exists {
+			if notice := buildChatNoticeFromContext(ctx); notice != "" {
+				base["notice"] = notice
+			}
+		}
 	}
 	return base
+}
+
+func buildChatNoticeFromContext(ctx *gin.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	code := ctx.GetInt("ai_robot_response_code")
+	if code != 1 {
+		return ""
+	}
+	kind := strings.TrimSpace(ctx.GetString("ai_robot_result_kind"))
+	count := ctx.GetInt("ai_robot_result_count")
+	size := ctx.GetInt64("ai_robot_response_size")
+
+	// 经验阈值：summary 中通常只会采样少量条目，超过该阈值就提醒“还有更多”。
+	if (kind == "list" || kind == "download") && count > 3 {
+		return "结果较多，本次回答仅展示摘要/部分示例；如需更多数据可继续翻问补充筛选条件，或查看原始数据（raw_cloud_json）"
+	}
+	if kind == "detail" && count > 1 {
+		return "结果较多，本次回答仅展示摘要/部分示例；如需更多数据可继续翻问补充筛选条件，或查看原始数据（raw_cloud_json）"
+	}
+	// 响应体很大时，即使统计不明显，也提醒可能存在信息被摘要压缩。
+	if size >= 64*1024 {
+		return "返回内容较多，本次回答为摘要/压缩展示；如需完整信息可查看原始数据（raw_cloud_json）或继续追问"
+	}
+	return ""
 }
 
 func captureAiRobotAnswer(ctx *gin.Context, data interface{}) {
