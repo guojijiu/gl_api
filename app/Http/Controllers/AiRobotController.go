@@ -167,12 +167,51 @@ func queryPageLimit(ctx *gin.Context) (int, int) {
 }
 
 func buildPagination(page int, limit int, total int64) gin.H {
-	return gin.H{
-		"page":  page,
-		"limit": limit,
-		"total": total,
-		"pages": (total + int64(limit) - 1) / int64(limit),
+	if page <= 0 {
+		page = 1
 	}
+	if limit <= 0 {
+		limit = 20
+	}
+	hasMore := int64(page)*int64(limit) < total
+	return gin.H{
+		"page":     page,
+		"limit":    limit,
+		"total":    total,
+		"pages":    (total + int64(limit) - 1) / int64(limit),
+		"has_more": hasMore,
+	}
+}
+
+// buildPartialDataNotice 给分页接口返回一个“仅本页数据”的显式提示，
+// 避免客户误以为接口只返回这些数据。
+func buildPartialDataNotice(pagination gin.H) string {
+	if pagination == nil {
+		return ""
+	}
+	hasMore, _ := pagination["has_more"].(bool)
+	if !hasMore {
+		return ""
+	}
+	page, _ := pagination["page"].(int)
+	limit, _ := pagination["limit"].(int)
+	total, _ := pagination["total"].(int64)
+	pages, _ := pagination["pages"].(int64)
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if pages <= 0 && limit > 0 {
+		pages = (total + int64(limit) - 1) / int64(limit)
+	}
+	if total <= 0 {
+		return "当前为分页返回，仅展示本页数据"
+	}
+	return "当前为分页返回，仅展示本页数据；可继续翻页获取更多（第 " +
+		strconv.Itoa(page) + " 页 / 共 " + strconv.FormatInt(pages, 10) + " 页，总计 " +
+		strconv.FormatInt(total, 10) + " 条）"
 }
 
 func readConversationManageRequest(ctx *gin.Context) Requests.AiRobotConversationManageRequest {
@@ -330,9 +369,11 @@ func (c *AiRobotController) ListConversations(ctx *gin.Context) {
 		return
 	}
 
+	pagination := buildPagination(req.Page, req.Limit, total)
 	c.frontSuccess(ctx, "操作成功", gin.H{
 		"items":      c.buildConversationListItems(ctx, cfg, items),
-		"pagination": buildPagination(req.Page, req.Limit, total),
+		"pagination": pagination,
+		"notice":     buildPartialDataNotice(pagination),
 	})
 }
 
@@ -365,8 +406,19 @@ func (c *AiRobotController) GetConversation(ctx *gin.Context) {
 		c.frontFailed(ctx, "读取会话失败", err)
 		return
 	}
-	messages := c.listConversationMessages(ctx, cfg, req.UserID, req.Platform, req.ConversationID)
-	c.frontSuccess(ctx, "操作成功", buildConversationDetail(doc, req.MessageID, messages))
+	messages, messageTotal := c.listConversationMessages(ctx, cfg, req.UserID, req.Platform, req.ConversationID)
+	detail := buildConversationDetail(doc, req.MessageID, messages)
+	if messageTotal > int64(len(messages)) && len(messages) > 0 {
+		detail["messages_notice"] = "当前会话消息较多，仅返回最近 " + strconv.Itoa(len(messages)) + " 条；可使用 /messages 接口分页获取完整历史"
+		detail["messages_truncated"] = true
+		detail["messages_total"] = messageTotal
+	} else {
+		detail["messages_truncated"] = false
+		if messageTotal > 0 {
+			detail["messages_total"] = messageTotal
+		}
+	}
+	c.frontSuccess(ctx, "操作成功", detail)
 }
 
 // GetMessage 返回单条 ai_robot 消息详情，便于前端按 message_id 精确读取。
@@ -455,9 +507,11 @@ func (c *AiRobotController) ListMessages(ctx *gin.Context) {
 		c.frontFailed(ctx, "读取消息列表失败", err)
 		return
 	}
+	pagination := buildPagination(req.Page, req.Limit, total)
 	c.frontSuccess(ctx, "操作成功", gin.H{
 		"items":      buildConversationMessageItems(items),
-		"pagination": buildPagination(req.Page, req.Limit, total),
+		"pagination": pagination,
+		"notice":     buildPartialDataNotice(pagination),
 	})
 }
 
@@ -905,11 +959,11 @@ func buildConversationTurnViews(items []Models.AiRobotConversationTurn) []gin.H 
 	return out
 }
 
-func (c *AiRobotController) listConversationMessages(ctx *gin.Context, cfg *Config.AiGatewayConfig, userID, platform, conversationID string) []aiRobotConversationMessageItem {
+func (c *AiRobotController) listConversationMessages(ctx *gin.Context, cfg *Config.AiGatewayConfig, userID, platform, conversationID string) ([]aiRobotConversationMessageItem, int64) {
 	if c == nil || c.conversationMessageService == nil || cfg == nil {
-		return nil
+		return nil, 0
 	}
-	items, _, err := c.conversationMessageService.List(
+	items, total, err := c.conversationMessageService.List(
 		ctx.Request.Context(),
 		effectiveConversationDatabase(cfg),
 		"",
@@ -922,9 +976,9 @@ func (c *AiRobotController) listConversationMessages(ctx *gin.Context, cfg *Conf
 		},
 	)
 	if err != nil {
-		return nil
+		return nil, 0
 	}
-	return buildConversationMessageItems(items)
+	return buildConversationMessageItems(items), total
 }
 
 func (c *AiRobotController) findSingleMessage(ctx *gin.Context, cfg *Config.AiGatewayConfig, userID, platform, conversationID, messageID string) (*aiRobotConversationMessageItem, error) {
