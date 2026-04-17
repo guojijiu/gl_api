@@ -19,6 +19,7 @@ import (
 )
 
 var aiRobotShanghaiLocation = loadAiRobotShanghaiLocation()
+var errChatTokenRequired = errors.New("请在 Header 中携带云平台用户 token")
 
 type AiRobotController struct {
 	Controller
@@ -27,58 +28,19 @@ type AiRobotController struct {
 }
 
 type aiRobotConversationListItem struct {
-	ID                 string                          `json:"id"`
-	UserID             string                          `json:"user_id,omitempty"`
-	ConversationID     string                          `json:"conversation_id"`
-	Platform           string                          `json:"platform"`
-	QuestionType       int                             `json:"question_type"`
-	LastMessageID      string                          `json:"last_message_id,omitempty"`
-	LastIntent         string                          `json:"last_intent,omitempty"`
-	LastQuestion       string                          `json:"last_question,omitempty"`
-	LastResolved       string                          `json:"last_resolved_question,omitempty"`
-	ContextSummary     string                          `json:"context_summary,omitempty"`
-	LastProjectNumber  string                          `json:"last_project_number,omitempty"`
-	LastContractNumber string                          `json:"last_contract_number,omitempty"`
-	LastTaskUUID       string                          `json:"last_task_uuid,omitempty"`
-	LastArticleNameCN  string                          `json:"last_article_name_cn,omitempty"`
-	LastJournalName    string                          `json:"last_journal_name,omitempty"`
-	LastTaskStatus     string                          `json:"last_task_status,omitempty"`
-	LastDownloadKind   string                          `json:"last_download_kind,omitempty"`
-	LastHasLink        bool                            `json:"last_has_link"`
-	LatestMessage      *aiRobotConversationMessageItem `json:"latest_message,omitempty"`
-	UpdatedAt          string                          `json:"updated_at,omitempty"`
+	ID             string `json:"id"`
+	UserID         string `json:"user_id,omitempty"`
+	ConversationID string `json:"conversation_id"`
+	Platform       string `json:"platform"`
+	QuestionType   int    `json:"question_type"`
+	UpdatedAt      string `json:"updated_at,omitempty"`
 }
 
 type aiRobotConversationMessageItem struct {
-	MessageID             string `json:"message_id,omitempty"`
-	Question              string `json:"question"`
-	Resolved              string `json:"resolved_question,omitempty"`
-	NormalizedQuestion    string `json:"normalized_question,omitempty"`
-	HitContext            bool   `json:"hit_context"`
-	ContextSource         string `json:"context_source,omitempty"`
-	ClarificationNeeded   bool   `json:"clarification_needed"`
-	ClarificationReason   string `json:"clarification_reason,omitempty"`
-	Answer                string `json:"answer,omitempty"`
-	Intent                string `json:"intent,omitempty"`
-	Success               bool   `json:"success"`
-	ShowMsg               string `json:"show_msg,omitempty"`
-	DebugMsg              string `json:"debug_msg,omitempty"`
-	Stage                 string `json:"stage,omitempty"`
-	ErrorType             string `json:"error_type,omitempty"`
-	CloudAPI              string `json:"cloud_api,omitempty"`
-	CloudStatusCode       int    `json:"cloud_status_code,omitempty"`
-	LLMModel              string `json:"llm_model,omitempty"`
-	RequestPayloadSummary string `json:"request_payload_summary,omitempty"`
-	ResultKind            string `json:"result_kind,omitempty"`
-	ResultCount           int    `json:"result_count,omitempty"`
-	ResultBrief           string `json:"result_brief,omitempty"`
-	ResponseSummary       string `json:"response_summary,omitempty"`
-	ResponseSize          int64  `json:"response_size,omitempty"`
-	CloudCalled           bool   `json:"cloud_called"`
-	DurationMS            int64  `json:"duration_ms,omitempty"`
-	LLMDurationMS         int64  `json:"llm_duration_ms,omitempty"`
-	CloudDurationMS       int64  `json:"cloud_duration_ms,omitempty"`
-	CreatedAt             string `json:"created_at,omitempty"`
+	MessageID string `json:"message_id,omitempty"`
+	Question  string `json:"question"`
+	Answer    string `json:"answer,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 // NewAiRobotController 仅负责创建控制器实例。
@@ -223,16 +185,9 @@ func readConversationManageRequest(ctx *gin.Context) Requests.AiRobotConversatio
 	}
 }
 
-func (c *AiRobotController) Chat(ctx *gin.Context) {
-	// 第1步：请求体校验（字段存在性 + 业务可支持性）
-	var req Requests.AiRobotChatRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		c.frontFailed(ctx, "请求参数错误", err)
-		return
-	}
-	if err := req.Validate(); err != nil {
-		c.frontFailed(ctx, "请求参数错误", err)
-		return
+func prepareChatRequest(ctx *gin.Context, req *Requests.AiRobotChatRequest) error {
+	if req == nil {
+		return errors.New("请求参数为空")
 	}
 	req.UserID = strings.TrimSpace(req.UserID)
 	if req.UserID != "" {
@@ -244,40 +199,77 @@ func (c *AiRobotController) Chat(ctx *gin.Context) {
 	if strings.TrimSpace(req.MessageID) == "" {
 		req.MessageID = uuid.NewString()
 	}
-	ctx.Set("ai_robot_conversation_id", req.ConversationID)
-	ctx.Set("ai_robot_message_id", req.MessageID)
 	if req.EnableContext && req.UserID == "" {
-		c.frontFailed(ctx, "启用上下文时 user_id 不能为空", nil)
-		return
+		return errors.New("启用上下文时 user_id 不能为空")
+	}
+	if ctx != nil {
+		ctx.Set("ai_robot_conversation_id", req.ConversationID)
+		ctx.Set("ai_robot_message_id", req.MessageID)
+	}
+	return nil
+}
+
+type chatInput struct {
+	Request Requests.AiRobotChatRequest
+	Token   string
+}
+
+func buildChatInput(ctx *gin.Context) (*chatInput, error) {
+	var req Requests.AiRobotChatRequest
+	if ctx == nil {
+		return nil, errors.New("请求上下文为空")
+	}
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		return nil, err
+	}
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	if err := prepareChatRequest(ctx, &req); err != nil {
+		return nil, err
 	}
 	token := strings.TrimSpace(ctx.GetHeader("Token"))
 	if token == "" {
-		c.frontFailed(ctx, "请在 Header 中携带云平台用户 token", nil)
+		return nil, errChatTokenRequired
+	}
+	return &chatInput{
+		Request: req,
+		Token:   token,
+	}, nil
+}
+
+func buildChatContext(ctx *gin.Context, timeoutSec int) (context.Context, context.CancelFunc) {
+	if ctx == nil || ctx.Request == nil {
+		return context.Background(), nil
+	}
+	base := ctx.Request.Context()
+	if timeoutSec <= 0 {
+		return base, nil
+	}
+	return context.WithTimeout(base, time.Duration(timeoutSec)*time.Second)
+}
+
+func (c *AiRobotController) Chat(ctx *gin.Context) {
+	input, err := buildChatInput(ctx)
+	if err != nil {
+		showMsg := "请求参数错误"
+		if errors.Is(err, errChatTokenRequired) {
+			showMsg = errChatTokenRequired.Error()
+		}
+		c.frontFailed(ctx, showMsg, err)
 		return
 	}
 
-	// 第2步：读取 AI 网关配置（包含云平台地址、大模型配置、能力矩阵等）
-	cfg := Config.GetAiGatewayConfig()
+	cfg := c.getAiGatewayConfigOrFail(ctx)
 	if cfg == nil {
-		c.frontFailed(ctx, "配置未初始化", nil)
 		return
 	}
-	actx := ctx.Request.Context()
-	if cfg.LLMTimeoutSec > 0 {
-		var cancel context.CancelFunc
-		// ai_robot 单次请求内通常包含多次云平台 HTTP 调用 + 1 次 LLM；
-		// 若仅用 LLMTimeoutSec 作为“请求总时长”，在多 uuid/多分支场景下容易提前超时。
-		// 这里给总时长留出缓冲，但仍以 LLMTimeoutSec 为基准控制上限。
-		totalTimeoutSec := cfg.LLMTimeoutSec * 3
-		if totalTimeoutSec < cfg.LLMTimeoutSec {
-			// 防止整型溢出（理论上不会发生，但保持健壮性）
-			totalTimeoutSec = cfg.LLMTimeoutSec
-		}
-		actx, cancel = context.WithTimeout(ctx.Request.Context(), time.Duration(totalTimeoutSec)*time.Second)
+
+	actx, cancel := buildChatContext(ctx, cfg.LLMTimeoutSec)
+	if cancel != nil {
 		defer cancel()
 	}
-	// 第3步：进入服务层编排（控制器不承载业务细节）
-	AiRobotFlow.NewProcessor().ProcessChat(actx, ctx, &req, token, cfg)
+	AiRobotFlow.NewProcessor().ProcessChat(actx, ctx, &input.Request, input.Token, cfg)
 }
 
 // Capabilities 返回当前能力矩阵与关键配置，用于联调/排障。
@@ -286,17 +278,8 @@ func (c *AiRobotController) Chat(ctx *gin.Context) {
 // 2. exposed_chat_capability_matrix 反映当前接口层实际对外开放的聊天能力；
 // 3. 二者分开展示，避免“配置里写了，但代码尚未正式开放”造成误解。
 func (c *AiRobotController) Capabilities(ctx *gin.Context) {
-	cfg := c.getAiGatewayConfigOrFail(ctx)
-	if cfg == nil {
-		return
-	}
 	c.frontSuccess(ctx, "操作成功", gin.H{
-		"strict_mode":                    cfg.StrictMode,
-		"configured_capability_matrix":   cfg.CapabilityMatrixDebugView(),
-		"exposed_chat_capability_matrix": buildExposedChatCapabilityView(),
-		"llm_model":                      cfg.LLMModel,
-		"cloud_public_base":              cfg.CloudFrontAPIBase(),
-		"cloud_intranet_base":            cfg.CloudIntranetAPIBase(),
+		"capability_matrix": buildExposedChatCapabilityView(),
 	})
 }
 
@@ -371,7 +354,7 @@ func (c *AiRobotController) ListConversations(ctx *gin.Context) {
 
 	pagination := buildPagination(req.Page, req.Limit, total)
 	c.frontSuccess(ctx, "操作成功", gin.H{
-		"items":      c.buildConversationListItems(ctx, cfg, items),
+		"items":      c.buildConversationListItems(items),
 		"pagination": pagination,
 		"notice":     buildPartialDataNotice(pagination),
 	})
@@ -406,17 +389,10 @@ func (c *AiRobotController) GetConversation(ctx *gin.Context) {
 		c.frontFailed(ctx, "读取会话失败", err)
 		return
 	}
-	messages, messageTotal := c.listConversationMessages(ctx, cfg, req.UserID, req.Platform, req.ConversationID)
+	messages := c.listConversationMessages(ctx, cfg, req.UserID, req.Platform, req.ConversationID)
 	detail := buildConversationDetail(doc, req.MessageID, messages)
-	if messageTotal > int64(len(messages)) && len(messages) > 0 {
-		detail["messages_notice"] = "当前会话消息较多，仅返回最近 " + strconv.Itoa(len(messages)) + " 条；可使用 /messages 接口分页获取完整历史"
-		detail["messages_truncated"] = true
-		detail["messages_total"] = messageTotal
-	} else {
-		detail["messages_truncated"] = false
-		if messageTotal > 0 {
-			detail["messages_total"] = messageTotal
-		}
+	if len(messages) >= 200 {
+		detail["messages_notice"] = "当前会话消息较多，仅返回最近 200 条；可使用 /messages 接口分页获取完整历史"
 	}
 	c.frontSuccess(ctx, "操作成功", detail)
 }
@@ -437,24 +413,6 @@ func (c *AiRobotController) GetMessage(ctx *gin.Context) {
 	if cfg == nil {
 		return
 	}
-
-	doc, err := c.conversationService.FindByConversation(
-		ctx.Request.Context(),
-		effectiveConversationDatabase(cfg),
-		cfg.ConversationMongoCollection,
-		req.UserID,
-		req.Platform,
-		req.ConversationID,
-	)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			c.frontFailed(ctx, "会话不存在", err)
-			return
-		}
-		c.frontFailed(ctx, "读取会话失败", err)
-		return
-	}
-
 	message, err := c.findSingleMessage(ctx, cfg, req.UserID, req.Platform, req.ConversationID, req.MessageID)
 	if err != nil {
 		c.frontFailed(ctx, "读取消息失败", err)
@@ -465,11 +423,7 @@ func (c *AiRobotController) GetMessage(ctx *gin.Context) {
 		return
 	}
 	c.frontSuccess(ctx, "操作成功", gin.H{
-		"conversation_id": doc.ConversationID,
-		"platform":        doc.Platform,
-		"user_id":         doc.UserID,
-		"message":         message,
-		"updated_at":      formatAiRobotTime(doc.UpdatedAt),
+		"message": message,
 	})
 }
 
@@ -550,13 +504,6 @@ func (c *AiRobotController) MessageStats(ctx *gin.Context) {
 	}
 	c.frontSuccess(ctx, "操作成功", gin.H{
 		"stats": stats,
-		"filters": gin.H{
-			"user_id":       req.UserID,
-			"platform":      req.Platform,
-			"question_type": req.QuestionType,
-			"start_time":    req.StartTime,
-			"end_time":      req.EndTime,
-		},
 	})
 }
 
@@ -688,63 +635,19 @@ func effectiveConversationDatabase(cfg *Config.AiGatewayConfig) string {
 	return effective.Database
 }
 
-func (c *AiRobotController) buildConversationListItems(ctx *gin.Context, cfg *Config.AiGatewayConfig, items []Models.AiRobotConversation) []aiRobotConversationListItem {
+func (c *AiRobotController) buildConversationListItems(items []Models.AiRobotConversation) []aiRobotConversationListItem {
 	out := make([]aiRobotConversationListItem, 0, len(items))
 	for _, item := range items {
-		lastTaskUUID := ""
-		if len(item.LastTaskUUIDs) > 0 {
-			lastTaskUUID = item.LastTaskUUIDs[0]
-		}
-		latestMessage := c.latestConversationMessageForList(ctx, cfg, &item)
 		out = append(out, aiRobotConversationListItem{
-			ID:                 item.ID,
-			UserID:             item.UserID,
-			ConversationID:     item.ConversationID,
-			Platform:           item.Platform,
-			QuestionType:       item.QuestionType,
-			LastMessageID:      item.LastMessageID,
-			LastIntent:         item.LastIntent,
-			LastQuestion:       item.LastQuestion,
-			LastResolved:       item.LastResolved,
-			ContextSummary:     item.ContextSummary,
-			LastProjectNumber:  item.LastProjectNumber,
-			LastContractNumber: item.LastContractNumber,
-			LastTaskUUID:       lastTaskUUID,
-			LastArticleNameCN:  item.LastArticleNameCN,
-			LastJournalName:    item.LastJournalName,
-			LastTaskStatus:     item.LastTaskStatus,
-			LastDownloadKind:   item.LastDownloadKind,
-			LastHasLink:        item.LastHasLink,
-			LatestMessage:      latestMessage,
-			UpdatedAt:          formatAiRobotTime(item.UpdatedAt),
+			ID:             item.ID,
+			UserID:         item.UserID,
+			ConversationID: item.ConversationID,
+			Platform:       item.Platform,
+			QuestionType:   item.QuestionType,
+			UpdatedAt:      formatAiRobotTime(item.UpdatedAt),
 		})
 	}
 	return out
-}
-
-func (c *AiRobotController) latestConversationMessageForList(ctx *gin.Context, cfg *Config.AiGatewayConfig, doc *Models.AiRobotConversation) *aiRobotConversationMessageItem {
-	if c != nil && c.conversationMessageService != nil && ctx != nil && cfg != nil && doc != nil {
-		message, err := c.conversationMessageService.FindLatest(
-			ctx.Request.Context(),
-			effectiveConversationDatabase(cfg),
-			"",
-			Services.AiRobotConversationMessageListFilter{
-				UserID:         doc.UserID,
-				Platform:       doc.Platform,
-				ConversationID: doc.ConversationID,
-			},
-		)
-		if err == nil && message != nil {
-			items := buildConversationMessageItems([]Models.AiRobotConversationMessage{*message})
-			if len(items) > 0 {
-				return &items[0]
-			}
-		}
-	}
-	if doc == nil {
-		return nil
-	}
-	return latestConversationMessage(doc.RecentTurns)
 }
 
 func buildConversationDetail(doc *Models.AiRobotConversation, messageID string, messages []aiRobotConversationMessageItem) gin.H {
@@ -768,82 +671,10 @@ func buildConversationDetail(doc *Models.AiRobotConversation, messageID string, 
 		currentMessage = messages[len(messages)-1]
 	}
 	return gin.H{
-		"id":                     doc.ID,
-		"user_id":                doc.UserID,
-		"conversation_id":        doc.ConversationID,
-		"platform":               doc.Platform,
-		"question_type":          doc.QuestionType,
-		"last_message_id":        doc.LastMessageID,
-		"last_intent":            doc.LastIntent,
-		"last_question":          doc.LastQuestion,
-		"last_resolved_question": doc.LastResolved,
-		"last_answer":            doc.LastAnswer,
-		"context_summary":        doc.ContextSummary,
-		"last_project_ids":       doc.LastProjectIDs,
-		"last_project_number":    doc.LastProjectNumber,
-		"last_contract_ids":      doc.LastContractIDs,
-		"last_contract_number":   doc.LastContractNumber,
-		"last_task_uuids":        doc.LastTaskUUIDs,
-		"last_article_name_cn":   doc.LastArticleNameCN,
-		"last_article_name_en":   doc.LastArticleNameEN,
-		"last_article_labels":    doc.LastArticleLabels,
-		"last_journal_name":      doc.LastJournalName,
-		"last_task_status":       doc.LastTaskStatus,
-		"last_failure_reason":    doc.LastFailureReason,
-		"last_download_kind":     doc.LastDownloadKind,
-		"last_has_link":          doc.LastHasLink,
-		"recent_turns":           buildConversationTurnViews(doc.RecentTurns),
-		"messages":               messages,
-		"current_message":        currentMessage,
-		"updated_at":             formatAiRobotTime(doc.UpdatedAt),
-	}
-}
-
-func findConversationMessage(doc *Models.AiRobotConversation, messageID string) *aiRobotConversationMessageItem {
-	if doc == nil {
-		return nil
-	}
-	messageID = strings.TrimSpace(messageID)
-	if messageID == "" {
-		return nil
-	}
-	for _, turn := range doc.RecentTurns {
-		if strings.TrimSpace(turn.MessageID) != messageID {
-			continue
-		}
-		item := aiRobotConversationMessageItem{
-			MessageID:           turn.MessageID,
-			Question:            turn.Question,
-			Resolved:            turn.Resolved,
-			NormalizedQuestion:  firstNonEmptyText(turn.Resolved, turn.Question),
-			HitContext:          strings.TrimSpace(turn.Resolved) != "" && strings.TrimSpace(turn.Resolved) != strings.TrimSpace(turn.Question),
-			ContextSource:       fallbackContextSource(turn.Question, turn.Resolved),
-			ClarificationNeeded: false,
-			Answer:              turn.Answer,
-			Intent:              turn.Intent,
-			CreatedAt:           formatAiRobotTime(turn.CreatedAt),
-		}
-		return &item
-	}
-	return nil
-}
-
-func latestConversationMessage(turns []Models.AiRobotConversationTurn) *aiRobotConversationMessageItem {
-	if len(turns) == 0 {
-		return nil
-	}
-	last := turns[len(turns)-1]
-	return &aiRobotConversationMessageItem{
-		MessageID:           last.MessageID,
-		Question:            last.Question,
-		Resolved:            last.Resolved,
-		NormalizedQuestion:  firstNonEmptyText(last.Resolved, last.Question),
-		HitContext:          strings.TrimSpace(last.Resolved) != "" && strings.TrimSpace(last.Resolved) != strings.TrimSpace(last.Question),
-		ContextSource:       fallbackContextSource(last.Question, last.Resolved),
-		ClarificationNeeded: false,
-		Answer:              last.Answer,
-		Intent:              last.Intent,
-		CreatedAt:           formatAiRobotTime(last.CreatedAt),
+		"conversation_id": doc.ConversationID,
+		"messages":        messages,
+		"current_message": currentMessage,
+		"updated_at":      formatAiRobotTime(doc.UpdatedAt),
 	}
 }
 
@@ -851,35 +682,10 @@ func buildConversationMessageItems(items []Models.AiRobotConversationMessage) []
 	out := make([]aiRobotConversationMessageItem, 0, len(items))
 	for _, item := range items {
 		out = append(out, aiRobotConversationMessageItem{
-			MessageID:             item.MessageID,
-			Question:              item.Question,
-			Resolved:              item.Resolved,
-			NormalizedQuestion:    firstNonEmptyText(item.NormalizedQuestion, item.Resolved, item.Question),
-			HitContext:            item.HitContext,
-			ContextSource:         item.ContextSource,
-			ClarificationNeeded:   item.ClarificationNeeded,
-			ClarificationReason:   item.ClarificationReason,
-			Answer:                item.Answer,
-			Intent:                item.Intent,
-			Success:               item.Success,
-			ShowMsg:               item.ShowMsg,
-			DebugMsg:              item.DebugMsg,
-			Stage:                 item.Stage,
-			ErrorType:             item.ErrorType,
-			CloudAPI:              item.CloudAPI,
-			CloudStatusCode:       item.CloudStatusCode,
-			LLMModel:              item.LLMModel,
-			RequestPayloadSummary: item.RequestPayloadSummary,
-			ResultKind:            item.ResultKind,
-			ResultCount:           item.ResultCount,
-			ResultBrief:           item.ResultBrief,
-			ResponseSummary:       item.ResponseSummary,
-			ResponseSize:          item.ResponseSize,
-			CloudCalled:           item.CloudCalled,
-			DurationMS:            item.DurationMS,
-			LLMDurationMS:         item.LLMDurationMS,
-			CloudDurationMS:       item.CloudDurationMS,
-			CreatedAt:             formatAiRobotTime(item.CreatedAt),
+			MessageID: item.MessageID,
+			Question:  item.Question,
+			Answer:    item.Answer,
+			CreatedAt: formatAiRobotTime(item.CreatedAt),
 		})
 	}
 	return out
@@ -889,38 +695,13 @@ func buildConversationMessageItemsFromTurns(items []Models.AiRobotConversationTu
 	out := make([]aiRobotConversationMessageItem, 0, len(items))
 	for _, item := range items {
 		out = append(out, aiRobotConversationMessageItem{
-			MessageID:           item.MessageID,
-			Question:            item.Question,
-			Resolved:            item.Resolved,
-			NormalizedQuestion:  firstNonEmptyText(item.Resolved, item.Question),
-			HitContext:          strings.TrimSpace(item.Resolved) != "" && strings.TrimSpace(item.Resolved) != strings.TrimSpace(item.Question),
-			ContextSource:       fallbackContextSource(item.Question, item.Resolved),
-			ClarificationNeeded: false,
-			Answer:              item.Answer,
-			Intent:              item.Intent,
-			CreatedAt:           formatAiRobotTime(item.CreatedAt),
+			MessageID: item.MessageID,
+			Question:  item.Question,
+			Answer:    item.Answer,
+			CreatedAt: formatAiRobotTime(item.CreatedAt),
 		})
 	}
 	return out
-}
-
-func firstNonEmptyText(values ...string) string {
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func fallbackContextSource(question string, resolved string) string {
-	question = strings.TrimSpace(question)
-	resolved = strings.TrimSpace(resolved)
-	if resolved != "" && resolved != question {
-		return "recent_turn"
-	}
-	return "none"
 }
 
 func formatAiRobotTime(value time.Time) string {
@@ -938,32 +719,11 @@ func loadAiRobotShanghaiLocation() *time.Location {
 	return time.FixedZone("CST", 8*3600)
 }
 
-func buildConversationTurnViews(items []Models.AiRobotConversationTurn) []gin.H {
-	out := make([]gin.H, 0, len(items))
-	for _, item := range items {
-		out = append(out, gin.H{
-			"message_id":        item.MessageID,
-			"question_type":     item.QuestionType,
-			"question":          item.Question,
-			"resolved_question": item.Resolved,
-			"answer":            item.Answer,
-			"intent":            item.Intent,
-			"project_number":    item.ProjectNumber,
-			"contract_number":   item.ContractNumber,
-			"task_uuid":         item.TaskUUID,
-			"article_name_cn":   item.ArticleNameCN,
-			"journal_name":      item.JournalName,
-			"created_at":        formatAiRobotTime(item.CreatedAt),
-		})
-	}
-	return out
-}
-
-func (c *AiRobotController) listConversationMessages(ctx *gin.Context, cfg *Config.AiGatewayConfig, userID, platform, conversationID string) ([]aiRobotConversationMessageItem, int64) {
+func (c *AiRobotController) listConversationMessages(ctx *gin.Context, cfg *Config.AiGatewayConfig, userID, platform, conversationID string) []aiRobotConversationMessageItem {
 	if c == nil || c.conversationMessageService == nil || cfg == nil {
-		return nil, 0
+		return nil
 	}
-	items, total, err := c.conversationMessageService.List(
+	items, err := c.conversationMessageService.ListNoTotal(
 		ctx.Request.Context(),
 		effectiveConversationDatabase(cfg),
 		"",
@@ -976,9 +736,9 @@ func (c *AiRobotController) listConversationMessages(ctx *gin.Context, cfg *Conf
 		},
 	)
 	if err != nil {
-		return nil, 0
+		return nil
 	}
-	return buildConversationMessageItems(items), total
+	return buildConversationMessageItems(items)
 }
 
 func (c *AiRobotController) findSingleMessage(ctx *gin.Context, cfg *Config.AiGatewayConfig, userID, platform, conversationID, messageID string) (*aiRobotConversationMessageItem, error) {

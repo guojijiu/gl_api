@@ -35,19 +35,15 @@ type AiRobotConversationMessageTrendPoint struct {
 	EmptyCount                  int64  `json:"empty_count"`
 	DownloadCount               int64  `json:"download_count"`
 	SuccessWithoutDownloadCount int64  `json:"success_without_download_count"`
-	ClarificationCount          int64  `json:"clarification_count"`
 }
 
 type AiRobotConversationMessageStats struct {
-	Total                     int64                                  `json:"total"`
-	SuccessCount              int64                                  `json:"success_count"`
-	FailedCount               int64                                  `json:"failed_count"`
-	ClarificationCount        int64                                  `json:"clarification_count"`
-	ResultKindCounts          map[string]int64                       `json:"result_kind_counts"`
-	QuestionTypeCounts        map[string]int64                       `json:"question_type_counts"`
-	ErrorTypeCounts           map[string]int64                       `json:"error_type_counts"`
-	ClarificationReasonCounts map[string]int64                       `json:"clarification_reason_counts"`
-	DailyTrend                []AiRobotConversationMessageTrendPoint `json:"daily_trend"`
+	Total              int64                                  `json:"total"`
+	SuccessCount       int64                                  `json:"success_count"`
+	FailedCount        int64                                  `json:"failed_count"`
+	ResultKindCounts   map[string]int64                       `json:"result_kind_counts"`
+	QuestionTypeCounts map[string]int64                       `json:"question_type_counts"`
+	DailyTrend         []AiRobotConversationMessageTrendPoint `json:"daily_trend"`
 }
 
 func NewAiRobotConversationMessageService() *AiRobotConversationMessageService {
@@ -129,6 +125,35 @@ func (s *AiRobotConversationMessageService) List(ctx context.Context, databaseNa
 	return docs, total, nil
 }
 
+// ListNoTotal 仅返回消息列表，不执行 total 统计，适合会话详情等轻量场景。
+func (s *AiRobotConversationMessageService) ListNoTotal(ctx context.Context, databaseName, collectionName string, filter AiRobotConversationMessageListFilter) ([]Models.AiRobotConversationMessage, error) {
+	collection, err := s.getCollection(databaseName, collectionName)
+	if err != nil {
+		return nil, err
+	}
+	if filter.Page <= 0 {
+		filter.Page = 1
+	}
+	if filter.Limit <= 0 {
+		filter.Limit = 20
+	}
+	query := s.buildListQuery(filter)
+	opts := options.Find().
+		SetSort(bson.D{{Key: "created_at", Value: 1}}).
+		SetSkip((filter.Page - 1) * filter.Limit).
+		SetLimit(filter.Limit)
+	cursor, err := collection.Find(ctx, query, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+	var docs []Models.AiRobotConversationMessage
+	if err := cursor.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+	return docs, nil
+}
+
 func (s *AiRobotConversationMessageService) DeleteByConversation(ctx context.Context, databaseName, collectionName, userID, platform, conversationID string) (int64, error) {
 	collection, err := s.getCollection(databaseName, collectionName)
 	if err != nil {
@@ -176,10 +201,6 @@ func (s *AiRobotConversationMessageService) Stats(ctx context.Context, databaseN
 	if err != nil {
 		return nil, err
 	}
-	clarificationCount, err := collection.CountDocuments(ctx, mergeMessageStatsQuery(query, bson.M{"clarification_needed": true}))
-	if err != nil {
-		return nil, err
-	}
 	resultKindCounts, err := s.groupCount(ctx, collection, query, "result_kind")
 	if err != nil {
 		return nil, err
@@ -188,28 +209,17 @@ func (s *AiRobotConversationMessageService) Stats(ctx context.Context, databaseN
 	if err != nil {
 		return nil, err
 	}
-	errorTypeCounts, err := s.groupCount(ctx, collection, query, "error_type")
-	if err != nil {
-		return nil, err
-	}
-	clarificationReasonCounts, err := s.groupCount(ctx, collection, query, "clarification_reason")
-	if err != nil {
-		return nil, err
-	}
 	dailyTrend, err := s.groupDailyTrend(ctx, collection, query)
 	if err != nil {
 		return nil, err
 	}
 	return &AiRobotConversationMessageStats{
-		Total:                     total,
-		SuccessCount:              successCount,
-		FailedCount:               failedCount,
-		ClarificationCount:        clarificationCount,
-		ResultKindCounts:          resultKindCounts,
-		QuestionTypeCounts:        questionTypeCounts,
-		ErrorTypeCounts:           errorTypeCounts,
-		ClarificationReasonCounts: clarificationReasonCounts,
-		DailyTrend:                dailyTrend,
+		Total:              total,
+		SuccessCount:       successCount,
+		FailedCount:        failedCount,
+		ResultKindCounts:   resultKindCounts,
+		QuestionTypeCounts: questionTypeCounts,
+		DailyTrend:         dailyTrend,
 	}, nil
 }
 
@@ -380,13 +390,6 @@ func (s *AiRobotConversationMessageService) groupDailyTrend(ctx context.Context,
 					0,
 				},
 			}},
-			"clarification_count": bson.M{"$sum": bson.M{
-				"$cond": bson.A{
-					bson.M{"$eq": bson.A{"$clarification_needed", true}},
-					1,
-					0,
-				},
-			}},
 		}}},
 		{{Key: "$sort", Value: bson.D{{Key: "_id", Value: 1}}}},
 	}
@@ -408,7 +411,6 @@ func (s *AiRobotConversationMessageService) groupDailyTrend(ctx context.Context,
 			EmptyCount:                  toInt64(row["empty_count"]),
 			DownloadCount:               toInt64(row["download_count"]),
 			SuccessWithoutDownloadCount: toInt64(row["success_without_download_count"]),
-			ClarificationCount:          toInt64(row["clarification_count"]),
 		})
 	}
 	return points, nil

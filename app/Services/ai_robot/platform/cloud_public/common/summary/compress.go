@@ -41,15 +41,15 @@ func compressPromptValue(v interface{}, depth int, parentKey string) interface{}
 	if depth >= maxPromptDepth {
 		switch t := v.(type) {
 		case []interface{}:
+			// 层级过深时不再展开元素，只保留数量，避免多层嵌套与多种 truncated 语义。
 			return map[string]interface{}{
-				"count":          len(t),
-				"omitted_count":  max(0, len(t)),
-				"truncated_note": "depth_limit_reached",
+				"count": len(t),
+				"note":  "内容层级过深，已省略明细，仅保留条数",
 			}
 		case map[string]interface{}:
 			return map[string]interface{}{
-				"keys":           len(t),
-				"truncated_note": "depth_limit_reached",
+				"key_count": len(t),
+				"note":      "内容层级过深，已省略字段明细",
 			}
 		case string:
 			return truncatePromptString(t)
@@ -62,7 +62,7 @@ func compressPromptValue(v interface{}, depth int, parentKey string) interface{}
 	case map[string]interface{}:
 		return compressPromptMap(t, depth)
 	case []interface{}:
-		return compressPromptArray(t, depth, parentKey)
+		return compressPromptArray(t, depth)
 	case string:
 		return truncatePromptString(t)
 	default:
@@ -103,40 +103,28 @@ func compressPromptMap(m map[string]interface{}, depth int) map[string]interface
 		}
 	}
 
-	if len(m) > len(result) {
-		result["_omitted_keys_count"] = len(m) - len(result)
-	}
 	return result
 }
 
-func compressPromptArray(items []interface{}, depth int, parentKey string) interface{} {
+func compressPromptArray(items []interface{}, depth int) interface{} {
 	samples := min(maxPromptArraySamples, len(items))
 	sampleItems := make([]interface{}, 0, samples)
 	for i := 0; i < samples; i++ {
-		sampleItems = append(sampleItems, compressPromptValue(items[i], depth+1, parentKey))
+		sampleItems = append(sampleItems, compressPromptValue(items[i], depth+1, ""))
 	}
 	return map[string]interface{}{
 		"count":          len(items),
 		"sample":         sampleItems,
 		"omitted_count":  max(0, len(items)-samples),
-		"truncated_note": truncatedNoteForArray(parentKey, len(items)),
+		"truncated_note": truncatedNoteForArray(len(items)),
 	}
 }
 
-func truncatedNoteForArray(parentKey string, total int) string {
+func truncatedNoteForArray(total int) string {
 	if total <= maxPromptArraySamples {
 		return ""
 	}
-	switch parentKey {
-	case "data":
-		return "data_array_compressed_for_prompt"
-	case "details":
-		return "details_array_compressed_for_prompt"
-	case "links":
-		return "links_array_compressed_for_prompt"
-	default:
-		return "array_compressed_for_prompt"
-	}
+	return "列表总条数大于默认展示上限（5 条），仅抽取前 5 条供分析；请在答复末尾用一句话提示用户可回复「查看更多」「下一页」，或在会话消息列表页面分页查看完整数据"
 }
 
 func truncatePromptString(s string) string {

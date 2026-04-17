@@ -60,6 +60,7 @@ func buildSummaryPrompt(userQuestion string, contextSummary string, compressedJS
 2）若接口结果正常且存在有效数据：用简短、清晰的中文直接回答用户问题。
 3）若接口结果正常但没有有效数据（如列表为空、content 为空等）：只回复“未查询到相关数据”。
 4）若接口错误（如 code 不为 1 或存在明确错误信息）：根据 showMsg 翻译成客户易识别的中文；若 showMsg 缺失，则只回复“未查询到相关数据”。
+5）若压缩 JSON 中出现列表总条数 count（或 total）大于 5，或 omitted_count 大于 0：说明结果未全部展示。请在答复末尾另起一行，用一句话提示用户可回复「查看更多」或「下一页」，或在会话消息列表页面分页查看；不要编造未出现在样本中的具体条目。
 
 格式规则：
 - 输出 Markdown 正文，不要代码块。
@@ -69,7 +70,7 @@ func buildSummaryPrompt(userQuestion string, contextSummary string, compressedJS
 禁止项：
 - 不要礼貌寒暄
 - 不要解释规则
-- 不要补充建议
+- 不要补充与当前问题无关的建议（但允许按上一条规则给出分页/查看更多引导）
 - 不要编造任何接口中不存在的信息
 - 不要出现“根据接口返回/接口显示/code/showMsg/系统层面/客户无需关注细节”等描述
 `, userQuestion, contextSummary, compressedJSON)

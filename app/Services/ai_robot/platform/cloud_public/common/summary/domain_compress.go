@@ -10,14 +10,14 @@ func compressProjectJSONForPrompt(apiJSON []byte) string {
 	if cps, ok := root["contract_projects"].([]interface{}); ok {
 		out := map[string]interface{}{
 			"domain":            "project_contract_projects",
-			"contract_projects": compressPromptArray(cps, 0, "contract_projects"),
+			"contract_projects": compressPromptArray(cps, 0),
 		}
 		return mustJSON(out, apiJSON)
 	}
 	if links, ok := root["links"].([]interface{}); ok {
 		out := map[string]interface{}{
 			"domain": "project_download",
-			"links":  compressPromptArray(links, 0, "links"),
+			"links":  compressPromptArray(links, 0),
 		}
 		if raw, exists := root["raw"]; exists {
 			out["raw"] = compressPromptValue(raw, 0, "raw")
@@ -37,7 +37,7 @@ func compressTaskJSONForPrompt(apiJSON []byte) string {
 			"domain":       "task_status",
 			"uuids":        root["uuids"],
 			"status_batch": compressPromptValue(root["status_batch"], 0, "status_batch"),
-			"details":      compressPromptArray(details, 0, "details"),
+			"details":      compressPromptArray(details, 0),
 		}
 		return mustJSON(out, apiJSON)
 	}
@@ -45,7 +45,7 @@ func compressTaskJSONForPrompt(apiJSON []byte) string {
 		out := map[string]interface{}{
 			"domain": "task_download",
 			"uuids":  root["uuids"],
-			"links":  compressPromptArray(links, 0, "links"),
+			"links":  compressPromptArray(links, 0),
 		}
 		if raw, exists := root["raw"]; exists {
 			out["raw"] = compressPromptValue(raw, 0, "raw")
@@ -94,7 +94,7 @@ func compressListResponseForPrompt(apiJSON []byte, domain string, fields []strin
 		),
 		"items_sample":   items,
 		"omitted_count":  max(0, len(data)-len(items)),
-		"truncated_note": truncatedNoteForArray("data", len(data)),
+		"truncated_note": truncatedNoteForArray(len(data)),
 	}
 	return mustJSON(out, apiJSON)
 }

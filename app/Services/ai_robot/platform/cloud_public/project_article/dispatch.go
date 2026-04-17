@@ -1,46 +1,14 @@
 package projectarticle
 
 import (
-	"fmt"
-
 	"cloud-platform-api/app/Services/ai_robot/internal/deps"
-	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/client"
+	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/cloudfail"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/intent"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/parse"
+	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/reply"
 	"cloud-platform-api/app/Services/ai_robot/platform/cloud_public/common/summary"
 	"cloud-platform-api/app/Services/ai_robot/policy"
-
-	"github.com/gin-gonic/gin"
 )
-
-func failIfProjectArticleCloudCallFailed(r deps.Responder, d *deps.Deps, errMsg string, status int, err error) bool {
-	if err != nil {
-		r.FrontFailed(d.Gin, errMsg, err)
-		return true
-	}
-	if status >= 400 {
-		r.FrontFailed(d.Gin, fmt.Sprintf("云平台返回 HTTP %d", status), nil)
-		return true
-	}
-	return false
-}
-
-func summarizeProjectArticleWithData(r deps.Responder, d *deps.Deps, intentKey string, raw []byte) bool {
-	d.RememberIntent(intentKey)
-	answer, err := summary.SummarizeProjectArticleData(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), raw)
-	if err != nil {
-		r.FrontFailed(d.Gin, "生成自然语言回复失败", err)
-		return false
-	}
-	r.FrontSuccess(d.Gin, "操作成功", gin.H{
-		"answer":         answer,
-		"intent":         intentKey,
-		"cloud_called":   true,
-		"strict_mode":    d.Cfg.StrictMode,
-		"raw_cloud_json": cloudclient.JsonRaw(raw),
-	})
-	return true
-}
 
 // Dispatch 处理 question_type 为「项目文章」的请求。
 func Dispatch(r deps.Responder, d *deps.Deps) {
@@ -56,18 +24,7 @@ func Dispatch(r deps.Responder, d *deps.Deps) {
 	}
 	switch plan.Intent {
 	case intent.IntentUnsupported:
-		answer, e := summary.SummarizeUnsupported(d.Ctx, d.LLM, d.Question(), d.ContextSummary(), plan.Reason)
-		if e != nil {
-			r.FrontFailed(d.Gin, "生成回复失败", e)
-			return
-		}
-		r.FrontSuccess(d.Gin, "操作成功", gin.H{
-			"answer":         answer,
-			"intent":         plan.Intent,
-			"cloud_called":   false,
-			"strict_mode":    d.Cfg.StrictMode,
-			"raw_cloud_json": nil,
-		})
+		_ = reply.RespondUnsupported(r, d, plan.Intent, plan.Reason)
 	case intent.IntentProjectArticleList:
 		handleProjectArticleList(r, d, plan.Intent)
 	default:
@@ -81,8 +38,8 @@ func handleProjectArticleList(r deps.Responder, d *deps.Deps, intentKey string) 
 	raw, status, err := deps.TrackNamedCloudCall("project_article.list", d, func() ([]byte, int, error) {
 		return d.Cloud().ProjectArticle().List(d.Ctx, d.PlatformID(), d.Token, articleFilters)
 	})
-	if failIfProjectArticleCloudCallFailed(r, d, "请求云平台失败", status, err) {
+	if cloudfail.HandleCloudCallFailure(r, d, "请求云平台失败", status, err) {
 		return
 	}
-	_ = summarizeProjectArticleWithData(r, d, intentKey, raw)
+	_ = reply.RespondCloudListSummary(r, d, intentKey, raw, summary.SummarizeProjectArticleData)
 }
